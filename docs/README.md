@@ -13,7 +13,7 @@ Start with the path that matches your job.
 | Start, verify, stop, and troubleshoot a deployment | [Operations](operations.md) |
 | Review the security boundary before client work | [Security](security.md) |
 | Connect any OpenAI-compatible application | [Generic endpoint integration](use-cases.md) |
-| Set up the development harness (Pi, subagents, OpenCode) | [Quick start](quickstart.md) and [Local setup](local-setup.md) |
+| Use the development harness (Pi, subagents, OpenCode) | [Development harness](development-harness.md) |
 | Compare self-managed, routed, European, and closed-model APIs | [Choosing an inference route](choosing-an-inference-route.md) |
 | Select a published route profile and understand its boundary | [Route profiles](profiles.md) |
 | Understand the evidence required before a performance claim | [Benchmark contract](benchmark-contract.md) |

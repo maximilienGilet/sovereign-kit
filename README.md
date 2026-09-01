@@ -112,7 +112,7 @@ Start with the [documentation index](docs/README.md).
 - [security boundary](docs/security.md)
 - [architecture](docs/architecture.md)
 - [generic endpoint integration](docs/use-cases.md)
-- [development harness: Pi, subagents, and OpenCode](docs/quickstart.md)
+- [development harness: Pi, subagents, and OpenCode](docs/development-harness.md)
 - [choosing an inference route](docs/choosing-an-inference-route.md)
 - [route profiles](docs/profiles.md)
 - [benchmark contract](docs/benchmark-contract.md)
