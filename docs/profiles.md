@@ -13,7 +13,7 @@ It does not define a business workload, an agent permission model, a tenant, a c
 ## Planned, not published profiles
 
 - **[Solo RTX 5090 candidate](profiles/solo-rtx5090.md):** a fast individual-route design under measurement; no released configuration or capacity claim yet.
-- **Lite:** requires a chosen explicit endpoint, region, model/version, authentication path, no-fallback policy, and latency/error evidence. A managed European API does not inherit self-hosted claims.
+- **[Lite European API candidate](profiles/lite-eu-api.md):** lower-operations design awaiting one selected endpoint, model, region review, secret path, and measured failure/capacity behaviour. It does not inherit self-hosted claims.
 
 ## Workloads
 
