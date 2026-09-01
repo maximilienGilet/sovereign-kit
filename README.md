@@ -4,9 +4,9 @@
 
 # Sovereign Kit
 
-Private Qwen routes for Pi and OpenCode.
+Private Qwen inference routes for approved AI clients.
 
-Sovereign Kit is a small macOS setup for teams that want their coding agents to use one approved model endpoint instead of a public model API.
+Sovereign Kit is a small macOS setup for teams that want approved AI clients to use one model endpoint instead of a public model API. V1 ships validated adapters for coding clients; other use cases require their own client validation.
 
 It installs isolated Pi and OpenCode profiles, then connects them to a Qwen/SGLang server through a loopback-only SSH tunnel. The shipped profiles do not include OpenAI, Anthropic, DeepSeek, OpenRouter, or other model providers.
 
@@ -28,6 +28,7 @@ This is a reference setup, not a compliance product. It does not make a rented G
 
 - an isolated Pi profile with `pi-subagents` and Oh-My-Pi;
 - a locked OpenCode configuration;
+- an OpenAI-compatible loopback endpoint for approved clients;
 - `sovkit-tunnel`, an SSH forward that binds locally to `127.0.0.1` and requires a verified host key;
 - a macOS installer;
 - the Qwen/SGLang launch settings used for the published benchmarks.
@@ -110,6 +111,7 @@ Start with the [documentation index](docs/README.md).
 - [operations and troubleshooting](docs/operations.md)
 - [security boundary](docs/security.md)
 - [architecture](docs/architecture.md)
+- [use cases](docs/use-cases.md)
 - [choosing an inference route](docs/choosing-an-inference-route.md)
 - [route profiles](docs/profiles.md)
 - [benchmark contract](docs/benchmark-contract.md)
