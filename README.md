@@ -111,7 +111,7 @@ Start with the [documentation index](docs/README.md).
 - [operations and troubleshooting](docs/operations.md)
 - [security boundary](docs/security.md)
 - [architecture](docs/architecture.md)
-- [use cases](docs/use-cases.md)
+- [OpenAI-compatible integrations](docs/use-cases.md)
 - [choosing an inference route](docs/choosing-an-inference-route.md)
 - [route profiles](docs/profiles.md)
 - [benchmark contract](docs/benchmark-contract.md)
