@@ -1,22 +1,29 @@
 #!/usr/bin/env bash
-# Installs an isolated Pi + pi-subagents + Oh-My-Pi profile for private Qwen/SGLang.
-# Existing profiles are preserved unless --upgrade is supplied.
+# Installs isolated Pi and OpenCode profiles for private Qwen/SGLang.
+# Existing Pi profiles are preserved unless --upgrade is supplied.
 set -euo pipefail
 umask 077
 
 upgrade=0
-if [[ $# -eq 1 && "$1" == "--upgrade" ]]; then
-  upgrade=1
-elif [[ $# -ne 0 ]]; then
-  printf 'Usage: %s [--upgrade]\n' "${0##*/}" >&2
-  exit 64
-fi
+install_opencode=0
+for arg in "$@"; do
+  case "$arg" in
+    --upgrade) upgrade=1 ;;
+    --with-opencode) install_opencode=1 ;;
+    *)
+      printf 'Usage: %s [--upgrade] [--with-opencode]\n' "${0##*/}" >&2
+      exit 64
+      ;;
+  esac
+done
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 profile_dir="${PI_SOVEREIGN_DIR:-$HOME/.pi/profiles/sovereign/agent}"
 profile_parent="$(dirname "$profile_dir")"
 stage_dir="$profile_parent/.agent.staging.$$"
 bin_dir="$HOME/.local/bin"
+opencode_dir="$HOME/.config/opencode"
+opencode_config="$opencode_dir/sovereign.json"
 backup_dir=""
 
 if ! command -v pi >/dev/null 2>&1; then
@@ -25,6 +32,13 @@ Pi CLI is required first. Install Pi, reopen the terminal, then rerun this scrip
 See: https://github.com/badlogic/pi-mono
 EOF
   exit 1
+fi
+if [[ "$install_opencode" -eq 1 ]]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    printf 'npm is required to install OpenCode automatically. Install Node.js, or install opencode-ai@1.18.25 yourself.\n' >&2
+    exit 1
+  fi
+  npm install --global opencode-ai@1.18.25
 fi
 if [[ -e "$profile_dir" && "$upgrade" -ne 1 ]]; then
   printf 'Refusing to overwrite existing profile: %s\nRe-run with --upgrade to back it up and replace it.\n' "$profile_dir" >&2
@@ -59,10 +73,14 @@ if [[ -e "$profile_dir" ]]; then
 fi
 mkdir -p "$profile_parent"
 mv "$stage_dir" "$profile_dir"
+install -d -m 700 "$opencode_dir"
+install -m 600 "$repo_dir/opencode/sovereign.json" "$opencode_config"
 install -m 700 "$repo_dir/bin/pi-sovereign" "$bin_dir/pi-sovereign"
 install -m 700 "$repo_dir/bin/qwen-sovereign-tunnel" "$bin_dir/qwen-sovereign-tunnel"
+install -m 700 "$repo_dir/bin/opencode-sovereign" "$bin_dir/opencode-sovereign"
 trap - EXIT
 
 printf 'Installed sovereign Pi profile in: %s\n' "$profile_dir"
+printf 'Installed sovereign OpenCode config in: %s\n' "$opencode_config"
 [[ -n "$backup_dir" ]] && printf 'Previous profile backed up in: %s\n' "$backup_dir"
-printf '\nEnsure ~/.local/bin is on PATH, then use:\n  qwen-sovereign-tunnel <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file>\n  pi-sovereign\n'
+printf '\nEnsure ~/.local/bin is on PATH, then use:\n  qwen-sovereign-tunnel <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file>\n  pi-sovereign\n  opencode-sovereign\n'

@@ -1,22 +1,25 @@
 # Qwen Sovereign Harness
 
-A portable **Pi + Oh-My-Pi + pi-subagents** profile for a privately accessed Qwen3.8-27B SGLang server.
+A portable **Pi + Oh-My-Pi + pi-subagents + OpenCode** setup for a privately accessed Qwen3.8-27B SGLang server.
 
 The purpose is simple:
 
 ```text
 Pi principal agent ─┐
 Pi subagents       ├─→ one private SGLang / Qwen endpoint
-Oh-My-Pi           ┘
+Oh-My-Pi           ┤
+OpenCode           ┘
 ```
 
 The profile deliberately exposes only `sovereign-qwen`. `pi-subagents` uses a strict model scope so workers cannot silently fall back to DeepSeek, OpenAI, Anthropic, or another provider.
 
 ## What this repository contains
 
-- `install-macos.sh` — installs the isolated profile and the two Pi packages.
+- `install-macos.sh` — installs the isolated Pi profile; `--with-opencode` additionally installs pinned OpenCode.
 - `profile/` — Qwen-only Pi configuration.
+- `opencode/sovereign.json` — Qwen-only OpenCode configuration.
 - `bin/pi-sovereign` — starts Pi using that isolated profile.
+- `bin/opencode-sovereign` — starts OpenCode with a highest-precedence Qwen-only configuration.
 - `bin/qwen-sovereign-tunnel` — a loopback-only SSH tunnel to SGLang.
 - `docs/` — operating procedure, security model, and benchmark results.
 
@@ -25,7 +28,7 @@ The profile deliberately exposes only `sovereign-qwen`. `pi-subagents` uses a st
 ```bash
 git clone https://github.com/<you>/qwen-sovereign-harness.git
 cd qwen-sovereign-harness
-./install-macos.sh
+./install-macos.sh --with-opencode
 ```
 
 When a Qwen pod is running, keep an SSH tunnel in one terminal:
@@ -34,11 +37,15 @@ When a Qwen pod is running, keep an SSH tunnel in one terminal:
 qwen-sovereign-tunnel <ssh-host> <ssh-port> <tunnel-user> <identity-file> <known-hosts-file>
 ```
 
-Then start the harness in another:
+Then start either harness in another terminal:
 
 ```bash
 pi-sovereign
+# or
+opencode-sovereign
 ```
+
+`opencode-sovereign` injects its configuration through OpenCode’s highest-precedence inline configuration. It therefore allows only `sovereign-qwen`, even when the current repository has another `opencode.json`.
 
 Use `/subagents-models` inside Pi to inspect the resolved model mapping. It must report `sovereign-qwen/qwen3.8-27b-nvfp4` for the parent and workers.
 

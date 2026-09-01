@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Run OpenCode with only the private Qwen provider enabled.
+set -euo pipefail
+
+config="${SOVEREIGN_OPENCODE_CONFIG:-$HOME/.config/opencode/sovereign.json}"
+if [[ ! -r "$config" ]]; then
+  printf 'Missing OpenCode sovereign config: %s\nRun install-macos.sh first.\n' "$config" >&2
+  exit 66
+fi
+if ! command -v opencode >/dev/null 2>&1; then
+  printf 'OpenCode is not installed. Install the pinned version:\n  npm install --global opencode-ai@1.18.25\n' >&2
+  exit 69
+fi
+
+# SGLang ignores this local identifier when its API authentication is disabled.
+# Override it with a deployment-specific value when SGLang API auth is enabled.
+export QWEN_LOCAL_API_KEY="${QWEN_LOCAL_API_KEY:-local-qwen-tunnel}"
+
+# Inline config has precedence over a repository opencode.json, so an untrusted
+# project cannot re-enable an external provider or replace the default model.
+export OPENCODE_CONFIG_CONTENT="$(<"$config")"
+exec opencode "$@"

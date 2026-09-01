@@ -4,6 +4,7 @@
 
 - macOS with an SSH client (included by default).
 - Pi CLI installed and available as `pi`.
+- Node.js/npm if installing OpenCode with `--with-opencode`; otherwise install `opencode-ai@1.18.25` separately.
 - GitHub access to clone this repository.
 - A separately provisioned Qwen/SGLang server that is reachable over SSH.
 
@@ -15,7 +16,7 @@ This repository does **not** create GPU infrastructure and contains no Vast API 
 git clone https://github.com/<you>/qwen-sovereign-harness.git
 cd qwen-sovereign-harness
 chmod +x install-macos.sh
-./install-macos.sh
+./install-macos.sh --with-opencode
 ```
 
 The installer creates:
@@ -27,6 +28,8 @@ The installer creates:
   npm/                         # Pi packages isolated to this profile
 ~/.local/bin/pi-sovereign
 ~/.local/bin/qwen-sovereign-tunnel
+~/.local/bin/opencode-sovereign
+~/.config/opencode/sovereign.json
 ```
 
 If `~/.local/bin` is not in your shell path, add this once:
@@ -51,7 +54,9 @@ qwen-sovereign-tunnel \
 
 This command deliberately binds its local port to `127.0.0.1`, so no other machine on your LAN can call it. It requires `StrictHostKeyChecking=yes`, the dedicated identity and the verified host-key file. Keep it running while using Pi.
 
-## 4. Start the sovereign harness
+## 4. Start a sovereign harness
+
+### Pi / Oh-My-Pi
 
 ```bash
 pi-sovereign
@@ -70,6 +75,14 @@ sovereign-qwen/qwen3.8-27b-nvfp4
 ```
 
 If another provider appears, stop. Do not send client content until the profile is corrected.
+
+### OpenCode
+
+```bash
+opencode-sovereign
+```
+
+The wrapper sets OpenCode’s inline config, whose precedence is higher than a project `opencode.json`. Only `sovereign-qwen/qwen3.8-27b-nvfp4` is enabled. It reads `QWEN_LOCAL_API_KEY` only to satisfy the OpenAI-compatible client; the wrapper defaults it to a non-secret local identifier for keyless SGLang. If SGLang API authentication is enabled, export the deployment-specific key in your shell; do not put it in this repository or OpenCode config.
 
 ## 5. Stop
 
