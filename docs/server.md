@@ -1,30 +1,39 @@
 # Server setup
 
-This repository does not provision the GPU host. The operator must create the instance, restrict access, and destroy it when work finishes.
+This repository does not provision the GPU host. The operator creates the instance, restricts access, and destroys it when work finishes.
 
-The local clients expect an OpenAI-compatible Qwen/SGLang endpoint at remote `127.0.0.1:30000`, reachable through SSH, VPN, or Tailscale.
+The local clients expect an OpenAI-compatible Qwen/SGLang endpoint at remote `127.0.0.1:30000`, reached through SSH, VPN, or Tailscale.
 
 ## Digest-locked container recipe
 
-The repository pins the Linux AMD64 SGLang image in [`server/image.lock`](../server/image.lock). `server/run-sglang.sh` reads that exact OCI digest, mounts the local Hugging Face cache, and starts...[truncated]
+The Linux AMD64 SGLang image is pinned by OCI digest in [`server/image.lock`](../server/image.lock). On a Linux GPU host with Docker and NVIDIA Container Toolkit:
+
+```bash
+git clone https://github.com/maximilienGilet/sovereign-kit.git
+cd sovereign-kit
+./server/run-sglang.sh
+```
+
+The script reads the lock file, mounts `$HOME/.cache/huggingface`, pins the Qwen model revision, and binds SGLang to `127.0.0.1:30000`. Do not change that address to `0.0.0.0` or open an inference firewall rule.
+
+The digest prevents an image tag from moving. It is **not yet a live re-benchmark of this exact image**; validate the image, GPU, model download, endpoint, and workload before client use.
+
 ## SSH account
 
-Use a dedicated, unprivileged SSH account for the tunnel. Do not use `root` for client work. Restrict the account and its authorized key to the forwarding it needs on the GPU host.
+Use a dedicated unprivileged SSH account. Do not use `root`. Restrict the account and authorized key to the forwarding it needs.
 
-The local wrapper uses a dedicated identity, a dedicated known-hosts file, `StrictHostKeyChecking=yes`, `BatchMode=yes`, `IdentitiesOnly=yes`, and `ExitOnForwardFailure=yes`.
+The local wrapper requires a dedicated identity and known-hosts file, `StrictHostKeyChecking=yes`, `BatchMode=yes`, `IdentitiesOnly=yes`, and `ExitOnForwardFailure=yes`.
 
-## Authentication
+## Authentication boundary
 
-The reference configuration can work with a keyless SGLang endpoint because SSH carries the route and both ends bind only to loopback. That does not stop another process under the same Mac account from calling the forwarded port.
+The shared Pi + OpenCode V1 route is deliberately keyless at the SGLang API layer: SSH and loopback bindings protect network transit and exposure. The local port remains available to processes under the same Mac account.
 
-`opencode-sovereign` supports `QWEN_LOCAL_API_KEY` when server authentication is enabled. The shipped Pi profile does not inject that variable, so it is intended for a keyless SGLang endpoint. Do not enable API authentication for Pi until you have created and tested a compatible private Pi profile.
-
-For an OpenCode-only authenticated deployment, use a unique secret for each deployment, keep it in local secret storage or a `600` ignored file, and export it as `QWEN_LOCAL_API_KEY` before running the wrapper.
+The shipped Pi profile does not accept a deployment secret. Do not add SGLang API authentication to this shared V1 route. An authenticated OpenCode-only deployment is outside the supported recipe until Pi secret injection has been implemented and tested.
 
 ## Supply-chain boundary
 
-`--trust-remote-code` executes model-provided Python on the GPU host. The model revision is pinned in the command, but it remains executable supply-chain input. Review any revision change. Pin the container image by OCI digest and limit server egress before a real client deployment.
+`--trust-remote-code` executes model-provided Python on the GPU host. The model revision and container image are pinned, but both remain supply-chain inputs. Review revisions, restrict server egress, and record the image digest used for each client deployment.
 
 ## Capacity settings
 
-The reference settings are not universal defaults. In particular, `262144` context and five running requests were tested on an RTX PRO 6000 S 96 GB with a particular historical SGLang build. Read the [benchmarks](../benchmarks/README.md), then measure your real prompts and concurrency before setting production limits.
+The reference settings are not universal defaults. `262144` context and five running requests were tested on an RTX PRO 6000 S 96 GB with a historical SGLang build. Read the [benchmarks](../benchmarks/README.md), then measure real prompts and concurrency before setting production limits.

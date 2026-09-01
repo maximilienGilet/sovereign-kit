@@ -85,11 +85,12 @@ If a different provider appears, stop and fix the local profile first.
 
 ## Read before production use
 
-The reference server command uses `--trust-remote-code`. That executes model-provided Python on the GPU host. The documented model revision is pinned, but you still need to review it and pin the server image for a real deployment.
+The reference server command uses `--trust-remote-code`. That executes model-provided Python on the GPU host. The model revision and server image digest are pinned, but both still require review before a client deployment.
 
 A local tunnel limits network exposure. It does not answer questions about a provider's contract, region, retention, disks, logs, egress, or access controls. Those are deployment and client decisions.
 
-The local port is available to processes running under the same macOS account. The shipped Pi profile uses the V1 keyless SGLang route behind SSH loopback. An authenticated endpoint is supported only for O...[truncated]
+The local port is available to processes running under the same macOS account. The shared Pi + OpenCode V1 route is keyless at the SGLang API layer and relies on SSH plus loopback bindings. Do not enable SGLang API authentication for this shared route until Pi secret injection has been implemented and tested.
+
 ## Benchmarks
 
 These are synthetic capacity tests on one RTX PRO 6000 S (96 GB), not performance or cost promises:

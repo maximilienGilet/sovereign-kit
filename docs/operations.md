@@ -18,7 +18,7 @@ Use this checklist each time you open a route for client work.
    sovkit doctor
    ```
 
-   It checks the profile, provider locks, extensions, executables, overrides, and `http://127.0.0.1:30000/v1/models`. A local endpoint warning means the tunnel or remote service is unavailable; a configuration failure blocks use.
+   It checks the profile, provider locks, extensions, executables, overrides, and `http://127.0.0.1:30000/v1/models`. Any failure blocks use; fix a local endpoint failure by starting the tunnel and remote service.
 
 4. Start `pi-sovereign` or `opencode-sovereign`.
 5. In Pi, run `/subagents-models` and confirm that every role resolves to `sovereign-qwen/qwen3.8-27b-nvfp4`.

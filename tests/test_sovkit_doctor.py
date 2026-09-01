@@ -69,12 +69,12 @@ class SovkitDoctorTests(unittest.TestCase):
     def test_reports_a_healthy_local_install_even_without_a_tunnel(self) -> None:
         result = self.run_doctor()
 
-        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(1, result.returncode, result.stderr)
         self.assertIn("PASS  Pi profile", result.stdout)
         self.assertIn("PASS  Pi provider lock", result.stdout)
         self.assertIn("PASS  Pi extensions", result.stdout)
         self.assertIn("PASS  OpenCode provider lock", result.stdout)
-        self.assertIn("WARN  Local endpoint", result.stdout)
+        self.assertIn("FAIL  Local endpoint", result.stdout)
         self.assertIn("sovkit-tunnel", result.stdout)
 
     def test_installer_installs_the_sovkit_command(self) -> None:
