@@ -6,7 +6,7 @@ Sovereign Kit is an early, provider-neutral setup kit for private AI used throug
 
 ## Before opening an issue or pull request
 
-- Read the [security boundary](README.md#security-boundary) and the [security policy](SECURITY.md).
+- Read the [security boundary](docs/security.md) and the [security policy](SECURITY.md).
 - Never include credentials, tokens, private keys, SSH host keys, production endpoints, client names, repository content, or private benchmark logs.
 - Do not claim legal sovereignty, GDPR compliance, DPA coverage, security certification, or provider contractual guarantees without independently verifiable and appropriately scoped evidence.
 - Keep provider-specific code behind clear adapters; the project core must not become tied to one GPU marketplace, model, or agent harness.

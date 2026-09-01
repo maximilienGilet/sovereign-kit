@@ -1,6 +1,6 @@
 # 262K single-agent benchmark: historical, not a production recipe
 
-> **Security note:** this historical capture uses a development image and does not pin a Hugging Face revision. Do not reproduce it as-is for client workloads. The reviewed deployment recipe is in [`docs/server-launch.md`](../docs/server-launch.md); it pins the model revision and adds tunnel and review requirements.
+> **Security note:** this historical capture uses a development image and does not pin a Hugging Face revision. Do not reproduce it as-is for client workloads. The reviewed deployment recipe is in [`docs/server.md`](../docs/server.md); it pins the model revision and adds tunnel and review requirements.
 
 Date: 2026-09-01. Synthetic test only. No client code or context was sent.
 

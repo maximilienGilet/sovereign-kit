@@ -1,65 +1,33 @@
-# Architecture and measured limits
+# Architecture
 
-## Shared-endpoint topology
+```mermaid
+flowchart LR
+  pi[Pi / Oh-My-Pi / pi-subagents]
+  opencode[OpenCode]
+  tunnel[Mac: SSH local forward<br/>127.0.0.1:30000]
+  server[GPU host: SGLang + Qwen<br/>127.0.0.1:30000]
 
-```text
-MacBook
-  Pi / Oh-My-Pi principal
-  ├─ Pi subagent A
-  ├─ Pi subagent B
-  ├─ Pi subagent C
-  └─ Pi subagent D
-         │ all use one provider/model
-         ▼
-127.0.0.1:30000 (SSH local forward)
-         ▼
-SGLang, bound to remote loopback
-         ▼
-Qwen3.8-27B NVFP4
+  pi --> tunnel
+  opencode --> tunnel
+  tunnel --> server
 ```
 
-This is request concurrency inside one SGLang server, not five co-hosted copies of the model.
+Pi and OpenCode do not contact the GPU host directly. They call `127.0.0.1:30000` on the Mac. `sovkit-tunnel` forwards that port over SSH to `127.0.0.1:30000` on the GPU host.
 
-## Validated benchmarks
+The server must bind to remote loopback. The tunnel must bind to local loopback. Neither endpoint should listen on a public address.
 
-### Long-context principal capacity
+## Client controls
 
-On an RTX PRO 6000 S (96 GB), Qwen3.8-27B NVFP4/SGLang completed:
+The Pi profile contains one provider, `sovereign-qwen`. `pi-subagents` has a strict allowlist of `sovereign-qwen/*`, so the parent and workers use the same model route.
 
-```text
-Input       246,000 tokens
-Output      8,192 tokens maximum
-Total       254,192 / 262,144 tokens
-Result      HTTP 200, no OOM and no truncation
-Decode      ~48.2 tok/s near the context limit
-```
+The OpenCode wrapper injects its configuration through `OPENCODE_CONFIG_CONTENT`. That takes precedence over a repository `opencode.json`, so a checked-out project cannot turn on another provider through its own config.
 
-### Shared principal plus workers
+These controls restrict model-provider selection. They do not sandbox plugins, shell commands, browser tools, Git remotes, or any other egress path used by an agent.
 
-On the same GPU/server class:
+## Concurrency
 
-```text
-Principal   128K input + 4,096 output
-Workers     4 × (32K input + 1,024 output)
-Concurrent  5 requests
-Result      all HTTP 200, no OOM
-```
+One SGLang process serves concurrent requests. This is not five copies of the model running on one GPU.
 
-Observed output decode after first token:
+The shared benchmark showed that one 128K principal and four 32K workers fit on an RTX PRO 6000 S, but sending all five large prompts together delayed the principal's first token by about 60 seconds. Submit the principal first, then send bounded worker tasks after it starts responding.
 
-```text
-Principal   ~55.7 tok/s
-Workers     ~34.6–51.3 tok/s each
-```
-
-The five prompts were deliberately submitted together. The principal received its first token after ~60 s because all large prefills competed. That is evidence for admission control, not a desired UX configuration.
-
-## Production routing recommendation
-
-1. Submit/pre-fill the principal first.
-2. Let it produce its first token.
-3. Dispatch worker tasks with bounded input and output budgets.
-4. Prefer 16K–32K workers, four at most until workload-specific measurements say otherwise.
-5. Provide compact worker summaries to the parent instead of full transcripts.
-
-Large-context workload, real tool usage and high variance in model output must be benchmarked with the actual harness before setting hard SLAs.
+See the [benchmark index](../benchmarks/README.md) for exact hardware, workloads, and limits.

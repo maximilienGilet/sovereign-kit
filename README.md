@@ -38,7 +38,7 @@ The reference path uses `RadixArk/Qwen3.8-27B-NVFP4`. That is the tested model, 
 
 You need a Qwen/SGLang host that you control or have explicitly approved. Its inference port must bind to loopback, not the public Internet.
 
-Read the [server launch contract](docs/server-launch.md) and [security checklist](docs/security-review.md) before sending client material through the route.
+Read the [quick start](docs/quickstart.md), [server setup](docs/server.md), and [security boundary](docs/security.md) before sending client material through the route.
 
 ## Install
 
@@ -94,13 +94,18 @@ These are synthetic capacity tests on one RTX PRO 6000 S (96 GB), not performanc
 
 [Architecture notes](docs/architecture.md) explain the routing and the resulting admission-control recommendation.
 
-## Reference documents
+## Documentation
 
-- [macOS setup](docs/macbook-setup.md)
-- [server launch contract](docs/server-launch.md)
-- [security review](docs/security-review.md)
-- [contributing](CONTRIBUTING.md)
-- [security policy](SECURITY.md)
+Start with the [documentation index](docs/README.md).
+
+- [quick start](docs/quickstart.md)
+- [local setup](docs/local-setup.md)
+- [server setup](docs/server.md)
+- [operations and troubleshooting](docs/operations.md)
+- [security boundary](docs/security.md)
+- [architecture](docs/architecture.md)
+- [choosing an inference route](docs/choosing-an-inference-route.md)
+- [benchmarks](benchmarks/README.md)
 
 ## License
 
