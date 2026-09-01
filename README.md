@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/sovereign-kit-logo.png" width="156" alt="Sovereign Kit mark">
+</p>
+
 # Sovereign Kit
 
 <p align="center"><strong>A simple setup for private AI on your provider.</strong></p>
