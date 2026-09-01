@@ -13,6 +13,8 @@ Start with the path that matches your job.
 | Start, verify, stop, and troubleshoot a deployment | [Operations](operations.md) |
 | Review the security boundary before client work | [Security](security.md) |
 | Compare self-managed, routed, European, and closed-model APIs | [Choosing an inference route](choosing-an-inference-route.md) |
+| Select a published route profile and understand its boundary | [Route profiles](profiles.md) |
+| Understand the evidence required before a performance claim | [Benchmark contract](benchmark-contract.md) |
 | Review measured capacity, not product claims | [Benchmarks](../benchmarks/README.md) |
 
 ## Reading order for a first deployment

@@ -111,6 +111,8 @@ Start with the [documentation index](docs/README.md).
 - [security boundary](docs/security.md)
 - [architecture](docs/architecture.md)
 - [choosing an inference route](docs/choosing-an-inference-route.md)
+- [route profiles](docs/profiles.md)
+- [benchmark contract](docs/benchmark-contract.md)
 - [benchmarks](benchmarks/README.md)
 
 ## License

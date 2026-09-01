@@ -93,6 +93,16 @@ class SovkitDoctorTests(unittest.TestCase):
         self.assertTrue(command.is_file())
         self.assertTrue(os.access(command, os.X_OK))
 
+    def test_studio_profile_has_a_fail_closed_route_and_evidence(self) -> None:
+        profile = json.loads((REPO / "profiles/studio-qwen-pro6000/profile.json").read_text())
+        self.assertEqual("studio-qwen-pro6000", profile["id"])
+        self.assertEqual("ssh-loopback", profile["route"]["transport"])
+        self.assertEqual("deny", profile["route"]["fallback"])
+        self.assertEqual("none", profile["provider"]["authentication"]["mode"])
+        self.assertEqual(262144, profile["limits"]["contextWindow"])
+        self.assertEqual(5, profile["limits"]["maxConcurrentRequests"])
+        self.assertTrue(profile["evidence"]["benchmarks"])
+
     def test_server_recipe_uses_a_digest_locked_image(self) -> None:
         image = (REPO / "server/image.lock").read_text().strip()
         self.assertRegex(image, r"^lmsysorg/sglang@sha256:[0-9a-f]{64}$")

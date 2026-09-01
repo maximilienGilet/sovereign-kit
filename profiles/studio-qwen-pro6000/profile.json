@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "studio-qwen-pro6000",
+  "displayName": "Studio — private Qwen on RTX PRO 6000",
+  "route": {
+    "transport": "ssh-loopback",
+    "baseUrl": "http://127.0.0.1:30000/v1",
+    "endpointBinding": "loopback",
+    "fallback": "deny"
+  },
+  "provider": {
+    "id": "sovereign-qwen",
+    "protocol": "openai-compatible",
+    "authentication": { "mode": "none" }
+  },
+  "model": {
+    "id": "qwen3.8-27b-nvfp4",
+    "revision": "319f741cce68d7914884900c138a1fbb70a42f30",
+    "input": ["text"]
+  },
+  "limits": {
+    "contextWindow": 262144,
+    "maxOutputTokens": 16384,
+    "maxConcurrentRequests": 5
+  },
+  "evidence": {
+    "benchmarks": [
+      "benchmarks/benchmark-262k-rtx-pro-6000-sglang.md",
+      "benchmarks/benchmark-shared-128k-plus-4x32k.md"
+    ],
+    "status": "historical-synthetic; rerun against the digest-locked recipe before production positioning"
+  }
+}
