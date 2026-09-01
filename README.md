@@ -10,12 +10,16 @@ Sovereign Kit is a small macOS setup for teams that want their coding agents to 
 
 It installs isolated Pi and OpenCode profiles, then connects them to a Qwen/SGLang server through a loopback-only SSH tunnel. The shipped profiles do not include OpenAI, Anthropic, DeepSeek, OpenRouter, or other model providers.
 
-```text
-MacBook                                      GPU host
-───────                                      ────────
-Pi / Oh-My-Pi / pi-subagents ─┐              SGLang + Qwen
-OpenCode                       ├─ SSH ─────▶ 127.0.0.1 only
-                               └─ one model route
+```mermaid
+flowchart LR
+  pi[Pi / Oh-My-Pi / pi-subagents]
+  opencode[OpenCode]
+  tunnel[Local SSH tunnel<br/>127.0.0.1 only]
+  sglang[SGLang + Qwen<br/>remote loopback only]
+
+  pi --> tunnel
+  opencode --> tunnel
+  tunnel --> sglang
 ```
 
 This is a reference setup, not a compliance product. It does not make a rented GPU legally sovereign, prove GDPR compliance, supply a DPA, or sandbox every tool and plugin used by an agent.
