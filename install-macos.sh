@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs isolated Pi and OpenCode profiles for private Qwen/SGLang.
+# Installs Sovereign Kit profiles for private Qwen/SGLang.
 # Existing Pi profiles are preserved unless --upgrade is supplied.
 set -euo pipefail
 umask 077
@@ -76,11 +76,11 @@ mv "$stage_dir" "$profile_dir"
 install -d -m 700 "$opencode_dir"
 install -m 600 "$repo_dir/opencode/sovereign.json" "$opencode_config"
 install -m 700 "$repo_dir/bin/pi-sovereign" "$bin_dir/pi-sovereign"
-install -m 700 "$repo_dir/bin/qwen-sovereign-tunnel" "$bin_dir/qwen-sovereign-tunnel"
+install -m 700 "$repo_dir/bin/sovkit-tunnel" "$bin_dir/sovkit-tunnel"
 install -m 700 "$repo_dir/bin/opencode-sovereign" "$bin_dir/opencode-sovereign"
 trap - EXIT
 
-printf 'Installed sovereign Pi profile in: %s\n' "$profile_dir"
-printf 'Installed sovereign OpenCode config in: %s\n' "$opencode_config"
+printf 'Installed Sovereign Kit Pi profile in: %s\n' "$profile_dir"
+printf 'Installed Sovereign Kit OpenCode config in: %s\n' "$opencode_config"
 [[ -n "$backup_dir" ]] && printf 'Previous profile backed up in: %s\n' "$backup_dir"
-printf '\nEnsure ~/.local/bin is on PATH, then use:\n  qwen-sovereign-tunnel <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file>\n  pi-sovereign\n  opencode-sovereign\n'
+printf '\nEnsure ~/.local/bin is on PATH, then use:\n  sovkit-tunnel <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file>\n  pi-sovereign\n  opencode-sovereign\n'

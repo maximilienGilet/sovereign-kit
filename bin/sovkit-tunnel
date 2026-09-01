@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: qwen-sovereign-tunnel <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file>
+# Usage: sovkit-tunnel <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file>
 # Private forward only: remote 127.0.0.1:30000 -> local 127.0.0.1:30000.
 set -euo pipefail
 if [[ $# -ne 5 ]]; then

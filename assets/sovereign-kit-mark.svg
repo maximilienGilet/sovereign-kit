@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Sovereign Kit mark</title>
+  <desc id="desc">Two interlocking components forming a protected route.</desc>
+  <rect width="128" height="128" rx="28" fill="#10231F"/>
+  <path d="M32 30h29c13.8 0 25 11.2 25 25v8H64c-6.6 0-12 5.4-12 12v3H42c-13.3 0-24-10.7-24-24v-1c0-12.7 10.3-23 23-23h1" fill="none" stroke="#D8FF5C" stroke-linecap="round" stroke-linejoin="round" stroke-width="11"/>
+  <path d="M96 98H67c-13.8 0-25-11.2-25-25v-8h22c6.6 0 12-5.4 12-12v-3h10c13.3 0 24 10.7 24 24v1c0 12.7-10.3 23-23 23h-1" fill="none" stroke="#67D7B3" stroke-linecap="round" stroke-linejoin="round" stroke-width="11"/>
+  <circle cx="64" cy="64" r="5.5" fill="#F4F9EF"/>
+</svg>

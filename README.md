@@ -1,43 +1,88 @@
-# Qwen Sovereign Harness
+<p align="center">
+  <img src="assets/sovereign-kit-mark.svg" width="104" alt="Sovereign Kit mark">
+</p>
 
-A portable **Pi + Oh-My-Pi + pi-subagents + OpenCode** setup for a privately accessed Qwen3.8-27B SGLang server.
+<h1 align="center">Sovereign Kit</h1>
 
-The purpose is simple:
+<p align="center"><strong>A simple setup for private AI on your provider.</strong></p>
+
+<p align="center">
+  <a href="LICENSE">Apache-2.0</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/security-review.md">Security boundary</a> ·
+  <a href="benchmarks/">Benchmark evidence</a>
+</p>
+
+Sovereign Kit connects the coding-agent tools you already use to an approved, privately accessed model endpoint on infrastructure you choose.
+
+It currently ships a portable macOS setup for **Pi**, **Oh-My-Pi**, **pi-subagents**, and **OpenCode**. All use the same Qwen/SGLang endpoint through a loopback-only SSH tunnel; the supplied profiles prevent a silent fallback to OpenAI, Anthropic, DeepSeek, OpenRouter, or another model provider.
 
 ```text
-Pi principal agent ─┐
-Pi subagents       ├─→ one private SGLang / Qwen endpoint
-Oh-My-Pi           ┤
-OpenCode           ┘
+Your MacBook                                      Your provider
+─────────────                                     ─────────────
+Pi / Oh-My-Pi / pi-subagents ─┐                   SGLang + approved model
+OpenCode                       ├─ local tunnel ─▶ bound to 127.0.0.1 only
+                               └─ provider lock
 ```
 
-The profile deliberately exposes only `sovereign-qwen`. `pi-subagents` uses a strict model scope so workers cannot silently fall back to DeepSeek, OpenAI, Anthropic, or another provider.
+> **The promise is technical and bounded:** Sovereign Kit helps you establish and inspect a private execution path from supported local harnesses to an approved model endpoint. It does **not** certify legal sovereignty, GDPR compliance, a provider DPA, complete network confinement, or a particular performance/SLA.
 
-## What this repository contains
+## Why Sovereign Kit
 
-- `install-macos.sh` — installs the isolated Pi profile; `--with-opencode` additionally installs pinned OpenCode.
-- `profile/` — Qwen-only Pi configuration.
-- `opencode/sovereign.json` — Qwen-only OpenCode configuration.
-- `bin/pi-sovereign` — starts Pi using that isolated profile.
-- `bin/opencode-sovereign` — starts OpenCode with a highest-precedence Qwen-only configuration.
-- `bin/qwen-sovereign-tunnel` — a loopback-only SSH tunnel to SGLang.
-- `docs/` — operating procedure, security model, and benchmark results.
+Coding-agent adoption often stops at a reasonable question: *where does the repository context go?*
 
-## Quick start on a MacBook
+Sovereign Kit gives technical teams a small, reproducible reference setup for an answer they can operate themselves:
+
+- choose the GPU provider or an existing SSH target;
+- run an approved open-weight model behind a private route;
+- connect Pi/OMP/pi-subagents and OpenCode to that one route;
+- forbid unapproved model-provider fallback in the shipped profiles;
+- retain a clear runbook, explicit residual risks, and measured capacity evidence.
+
+It is a **setup kit**, not a SaaS control plane and not a compliance badge.
+
+## What works today
+
+| Capability | Status |
+| --- | --- |
+| Isolated Pi profile with strict `pi-subagents` model scope | Available |
+| Oh-My-Pi extension in that isolated profile | Available |
+| Locked-down OpenCode custom provider configuration | Available |
+| Loopback-only SSH forwarding with strict host-key checking | Available |
+| Qwen/SGLang reference launch contract | Available |
+| Reproducible macOS installer | Available |
+| Provider lifecycle automation and a generic `sovkit` CLI | Planned — not shipped |
+
+The current reference model is `RadixArk/Qwen3.8-27B-NVFP4`; it is an implementation reference, not a requirement of the project’s long-term provider-neutral core.
+
+## Quick start
+
+### 1. Provision an approved private model endpoint
+
+Prepare a Qwen/SGLang host following the [server launch contract](docs/server-launch.md). The inference service must bind to loopback on the GPU host — never expose its inference port publicly.
+
+### 2. Install the local kit
 
 ```bash
-git clone https://github.com/<you>/qwen-sovereign-harness.git
-cd qwen-sovereign-harness
+git clone https://github.com/maximilienGilet/sovereign-kit.git
+cd sovereign-kit
 ./install-macos.sh --with-opencode
 ```
 
-When a Qwen pod is running, keep an SSH tunnel in one terminal:
+The installer creates an isolated Pi profile and installs the wrappers under `~/.local/bin`. It refuses to overwrite an existing profile unless you pass `--upgrade`.
+
+### 3. Establish the private route
+
+Verify the remote host key out of band and use a dedicated unprivileged SSH account and identity:
 
 ```bash
-qwen-sovereign-tunnel <ssh-host> <ssh-port> <tunnel-user> <identity-file> <known-hosts-file>
+sovkit-tunnel <ssh-host> <ssh-port> <tunnel-user> \
+  <identity-file> <known-hosts-file>
 ```
 
-Then start either harness in another terminal:
+The tunnel forwards only `127.0.0.1:30000` on your MacBook to `127.0.0.1:30000` on the remote host.
+
+### 4. Use your harness
 
 ```bash
 pi-sovereign
@@ -45,48 +90,42 @@ pi-sovereign
 opencode-sovereign
 ```
 
-`opencode-sovereign` injects its configuration through OpenCode’s highest-precedence inline configuration. It therefore allows only `sovereign-qwen`, even when the current repository has another `opencode.json`.
-
-Use `/subagents-models` inside Pi to inspect the resolved model mapping. It must report `sovereign-qwen/qwen3.8-27b-nvfp4` for the parent and workers.
-
-## Server contract
-
-The profile assumes a server with this contract:
+In Pi, run `/subagents-models` before client work. The parent and every worker must resolve to:
 
 ```text
-Protocol : OpenAI Chat Completions compatible
-Endpoint : http://127.0.0.1:30000/v1 (on the client, through SSH)
-Model    : qwen3.8-27b-nvfp4
-Security : remote SGLang binds only to 127.0.0.1:30000
+sovereign-qwen/qwen3.8-27b-nvfp4
 ```
 
-The `apiKey` in `profile/models.json` is only a local placeholder required by Pi to list a keyless OpenAI-compatible server. It is not a secret and is not an authentication barrier. Network isolation is provided by loopback binding plus SSH/VPN.
-
-## Recommended harness policy
-
-Use one shared endpoint, but do not submit every large prompt at once:
-
-1. Send the principal agent its large context first.
-2. Wait until it receives its first token.
-3. Admit bounded subagents (typically 16K–32K context, bounded output).
-4. Return worker summaries to the principal rather than copying raw transcripts wholesale.
-
-This protects principal-agent TTFT while preserving shared GPU utilization. See [architecture](docs/architecture.md).
-
-## Optional Vast.ai referral
-
-Vast.ai permits referral links in GitHub repositories. A dedicated referral account is required for cash payouts; this repository does **not** contain a referral URL yet. See [the referral guide](docs/vast-referral.md) before adding one.
+If another provider is shown, stop and correct the local profile before sending sensitive content.
 
 ## Security boundary
 
-Open-weight inference on a rented GPU is not automatically contractually sovereign. Validate region, provider agreement/DPA, storage, logs, egress, access controls, retention and deletion against each client requirement. Never commit credentials, SSH private keys, API keys, or generated Pi `auth.json`.
+Sovereign Kit deliberately does a few things well, and documents what remains outside its reach.
 
-The server recipe uses `--trust-remote-code`; treat a model revision as executable supply-chain input. The launch documentation pins the reviewed revision and requires re-approval for upgrades.
+**It helps control:** local provider selection, subagent model scope, private loopback transport, dedicated SSH identity use, and strict remote host-key verification.
 
-## Docs
+**It cannot establish automatically:** the GPU provider’s contractual terms, region/data residency, storage and log retention, an applicable DPA, security of every plugin/tool invoked by an agent, or legal compliance for your client.
+
+Read the [security review and operating checklist](docs/security-review.md) before use. Do not commit credentials, SSH material, endpoint addresses, or generated local agent state.
+
+The reference launch uses `--trust-remote-code`; a pinned model revision is still executable supply-chain input and must be reviewed before use. See [server launch](docs/server-launch.md).
+
+## Architecture and evidence
 
 - [MacBook setup](docs/macbook-setup.md)
 - [Server launch contract](docs/server-launch.md)
 - [Architecture and measured limits](docs/architecture.md)
 - [Security review and operating checklist](docs/security-review.md)
 - [Benchmark evidence](benchmarks/)
+
+The benchmark reports are evidence for their stated hardware, versions, and workloads — not a universal capacity or cost promise.
+
+## Contributing
+
+This project is early and intentionally narrow. Issues and pull requests that improve reproducibility, safety boundaries, provider-neutral adapters, and documentation are welcome.
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) and never include credentials, internal endpoints, host keys, client material, or sensitive proof-of-concepts in an issue. Use [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+## License
+
+[Apache License 2.0](LICENSE). You may use, modify, and distribute the code under its terms.

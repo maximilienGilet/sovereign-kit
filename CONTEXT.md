@@ -2,11 +2,11 @@
 
 ## Consultant team
 
-The primary user of Sovereign Environment: a technical consultant or delivery team that deploys coding agents for client work with heightened confidentiality, egress-control or data-location requirements.
+The primary user of Sovereign Kit: a technical consultant or delivery team that deploys coding agents for client work with heightened confidentiality, egress-control or data-location requirements.
 
-## Sovereign Environment
+## Sovereign Kit
 
-The project under design: an opinionated environment that makes an approved self-hosted inference route easy to configure, verify and operate for a Consultant Team. Its V1 promise is a **verified private execution path**: it configures and verifies that the parent agent, subagents and inference use an approved route without model-provider fallback, then emits an audit/status report. It explicitly does not claim that private networking alone establishes legal or contractual sovereignty.
+The project under design: a provider-neutral setup kit that turns an approved inference route into a ready-to-use private AI environment for a Consultant Team. Its V1 promise is a **verified private execution path**: it configures and verifies that the parent agent, subagents and inference use an approved route without model-provider fallback, then emits a human-readable diagnostic. It explicitly does not claim that private networking alone establishes legal or contractual sovereignty.
 
 ## Dashboard
 
@@ -15,6 +15,10 @@ An optional local user interface over the same policy, verification report and l
 ## Inference Target
 
 A provider-neutral description of an approved inference destination: private endpoint, access method (SSH/VPN/Tailscale), expected model and verification policy.
+
+## Provider Setup Kit
+
+The project’s central product concept: a reproducible kit that turns an approved Compute Provider or External SSH Target into a ready-to-use private AI environment for supported coding-agent harnesses. It handles the setup path from provider to model endpoint to local developer tool; it is not merely an auditor or a generic local-model manager.
 
 ## Compute Provider Adapter
 
@@ -38,7 +42,7 @@ The paid offer provides a bounded technical guarantee: an approved and verified 
 
 ## V1 Verification Interface
 
-V1 exposes a single human-readable `senv doctor` diagnostic. It verifies the configurable local path and clearly states what it cannot verify. Machine-readable reports, CI gates, signed attestations and retained audit history are deferred until a concrete customer workflow requires them.
+V1 exposes a single human-readable `sovkit doctor` diagnostic. It verifies the configurable local path and clearly states what it cannot verify. Machine-readable reports, CI gates, signed attestations and retained audit history are deferred until a concrete customer workflow requires them.
 
 ## V1 Agent Harnesses
 

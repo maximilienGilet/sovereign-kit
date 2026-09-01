@@ -1,4 +1,4 @@
-# Setup MacBook
+# Sovereign Kit on macOS
 
 ## 1. Prerequisites
 
@@ -13,8 +13,8 @@ This repository does **not** create GPU infrastructure and contains no Vast API 
 ## 2. Install the profile
 
 ```bash
-git clone https://github.com/<you>/qwen-sovereign-harness.git
-cd qwen-sovereign-harness
+git clone https://github.com/<you>/sovereign-kit.git
+cd sovereign-kit
 chmod +x install-macos.sh
 ./install-macos.sh --with-opencode
 ```
@@ -27,7 +27,7 @@ The installer creates:
   models.json
   npm/                         # Pi packages isolated to this profile
 ~/.local/bin/pi-sovereign
-~/.local/bin/qwen-sovereign-tunnel
+~/.local/bin/sovkit-tunnel
 ~/.local/bin/opencode-sovereign
 ~/.config/opencode/sovereign.json
 ```
@@ -46,7 +46,7 @@ The GPU server must bind SGLang to loopback. Do not expose port 30000 to the Int
 Use a dedicated, unprivileged tunnel user and SSH identity. Verify the server host key out of band, then save that fingerprint in a dedicated known-hosts file (do **not** accept a first-use key blindly).
 
 ```bash
-qwen-sovereign-tunnel \
+sovkit-tunnel \
   <ssh-host> <ssh-port> <tunnel-user> \
   ~/.ssh/qwen-sovereign_ed25519 \
   ~/.ssh/qwen-sovereign_known_hosts
