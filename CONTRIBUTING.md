@@ -2,7 +2,7 @@
 
 Thanks for considering a contribution.
 
-Sovereign Kit is an early, provider-neutral setup kit for private AI used through coding-agent harnesses. Contributions should improve reproducibility, clarity, or bounded technical controls — not expand the project into a generic compliance platform.
+Sovereign Kit is an early, provider-neutral setup kit for a private AI inference route. The V1 harnesses are coding agents, but the core route can serve approved OpenAI-compatible clients. Contributions should improve reproducibility, clarity, or bounded technical controls — not expand the project into a generic compliance platform.
 
 ## Before opening an issue or pull request
 
@@ -20,6 +20,8 @@ bash -n install-macos.sh bin/*
 python3 -m json.tool profile/settings.json >/dev/null
 python3 -m json.tool profile/models.json >/dev/null
 python3 -m json.tool opencode/sovereign.json >/dev/null
+python3 scripts/check-profiles.py
+python3 tests/test_sovkit_doctor.py
 python3 scripts/check-secrets.py
 ```
 
