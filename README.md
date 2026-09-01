@@ -108,6 +108,7 @@ Start with the [documentation index](docs/README.md).
 - [quick start](docs/quickstart.md)
 - [local setup](docs/local-setup.md)
 - [server setup](docs/server.md)
+- [optional Vast.ai GPU-host worksheet](docs/providers/vast.md)
 - [operations and troubleshooting](docs/operations.md)
 - [security boundary](docs/security.md)
 - [architecture](docs/architecture.md)

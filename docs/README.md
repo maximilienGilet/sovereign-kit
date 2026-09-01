@@ -10,6 +10,7 @@ Start with the path that matches your job.
 | Get a working local setup quickly | [Quick start](quickstart.md) |
 | Understand what the installer writes and how the clients are locked | [Local setup](local-setup.md) |
 | Prepare the remote Qwen/SGLang host | [Server setup](server.md) |
+| Use Vast.ai as an optional GPU-host marketplace | [Vast.ai worksheet](providers/vast.md) |
 | Start, verify, stop, and troubleshoot a deployment | [Operations](operations.md) |
 | Review the security boundary before client work | [Security](security.md) |
 | Connect any OpenAI-compatible application | [Generic endpoint integration](use-cases.md) |

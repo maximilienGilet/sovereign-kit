@@ -1,6 +1,6 @@
 # Server setup
 
-This repository does not provision the GPU host. The operator creates the instance, restricts access, and destroys it when work finishes.
+The repository does not provision the GPU host. The operator creates the instance, restricts access, and destroys it when work finishes. For an optional Vast.ai host-selection worksheet, see [Vast.ai](providers/vast.md).
 
 The local clients expect an OpenAI-compatible Qwen/SGLang endpoint at remote `127.0.0.1:30000`, reached through SSH, VPN, or Tailscale.
 
