@@ -4,6 +4,14 @@ A route profile defines one approved inference path: transport, endpoint binding
 
 It does not define a business workload, an agent permission model, a tenant, a cost promise, or a legal/compliance guarantee.
 
+Published profiles are checked with:
+
+```bash
+python3 scripts/check-profiles.py
+```
+
+The checker rejects unknown top-level keys, route fallbacks, unsupported transports, malformed limits, and profiles without benchmark evidence. It complements the JSON Schema at [`profiles/schema/profile-v1.schema.json`](../profiles/schema/profile-v1.schema.json).
+
 ## Published profile
 
 | Profile | Status | Use |

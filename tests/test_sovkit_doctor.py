@@ -103,6 +103,17 @@ class SovkitDoctorTests(unittest.TestCase):
         self.assertEqual(5, profile["limits"]["maxConcurrentRequests"])
         self.assertTrue(profile["evidence"]["benchmarks"])
 
+    def test_profile_checker_accepts_the_published_studio_profile(self) -> None:
+        result = subprocess.run(
+            ["python3", "scripts/check-profiles.py"],
+            cwd=REPO,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("Profile validation passed", result.stdout)
+
     def test_server_recipe_uses_a_digest_locked_image(self) -> None:
         image = (REPO / "server/image.lock").read_text().strip()
         self.assertRegex(image, r"^lmsysorg/sglang@sha256:[0-9a-f]{64}$")

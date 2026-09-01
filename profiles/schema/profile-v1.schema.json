@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sovereign Kit route profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "displayName", "route", "provider", "model", "limits", "evidence"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "displayName": {"type": "string", "minLength": 1},
+    "route": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transport", "baseUrl", "endpointBinding", "fallback"],
+      "properties": {
+        "transport": {"enum": ["ssh-loopback", "https-pinned"]},
+        "baseUrl": {"type": "string"},
+        "endpointBinding": {"enum": ["loopback", "https"]},
+        "fallback": {"const": "deny"}
+      }
+    },
+    "provider": {"type": "object"},
+    "model": {"type": "object"},
+    "limits": {"type": "object"},
+    "evidence": {"type": "object"}
+  }
+}
