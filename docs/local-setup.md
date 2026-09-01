@@ -1,6 +1,6 @@
 # Local setup
 
-`install-macos.sh` creates a self-contained Pi profile and installs three wrappers. It does not create a GPU server or an SSH account.
+`install-macos.sh` renders the published Studio route profile into a self-contained Pi profile and an OpenCode configuration, then installs three wrappers. It does not create a GPU server or an SSH account. The versioned source of shared provider/model/endpoint/limit values is [`profiles/studio-qwen-pro6000/profile.json`](../profiles/studio-qwen-pro6000/profile.json); Pi/OpenCode-only policies remain renderer policy.
 
 ## Install commands
 

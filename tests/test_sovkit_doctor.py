@@ -33,17 +33,24 @@ class SovkitDoctorTests(unittest.TestCase):
             "echo 'pi 0.84.2'\n",
         )
         self._fake_command("opencode", "#!/usr/bin/env bash\necho '1.18.25'\n")
+        rendered = Path(self.temp.name) / "rendered"
+        subprocess.run(
+            ["python3", str(REPO / "scripts/render-profile.py"), "--profile", str(REPO / "profiles/studio-qwen-pro6000/profile.json"), "--output", str(rendered)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         profile = self.home / ".pi/profiles/sovereign/agent"
         profile.mkdir(parents=True)
-        shutil.copy(REPO / "profile/settings.json", profile / "settings.json")
-        shutil.copy(REPO / "profile/models.json", profile / "models.json")
+        shutil.copy(rendered / "pi/settings.json", profile / "settings.json")
+        shutil.copy(rendered / "pi/models.json", profile / "models.json")
         (profile / "npm/node_modules/pi-subagents").mkdir(parents=True)
         extension = profile / "npm/node_modules/oh-my-pi/dist"
         extension.mkdir(parents=True)
         (extension / "extension.js").touch()
         config = self.home / ".config/opencode"
         config.mkdir(parents=True)
-        shutil.copy(REPO / "opencode/sovereign.json", config / "sovereign.json")
+        shutil.copy(rendered / "opencode/sovereign.json", config / "sovereign.json")
 
     def tearDown(self) -> None:
         self.temp.cleanup()

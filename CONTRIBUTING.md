@@ -17,10 +17,8 @@ Run the checks relevant to your change before opening a pull request:
 
 ```bash
 bash -n install-macos.sh bin/*
-python3 -m json.tool profile/settings.json >/dev/null
-python3 -m json.tool profile/models.json >/dev/null
-python3 -m json.tool opencode/sovereign.json >/dev/null
 python3 scripts/check-profiles.py
+python3 tests/test_render_profile.py
 python3 tests/test_sovkit_doctor.py
 python3 scripts/check-secrets.py
 ```

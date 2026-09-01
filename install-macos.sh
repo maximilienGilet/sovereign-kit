@@ -21,6 +21,7 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 profile_dir="${PI_SOVEREIGN_DIR:-$HOME/.pi/profiles/sovereign/agent}"
 profile_parent="$(dirname "$profile_dir")"
 stage_dir="$profile_parent/.agent.staging.$$"
+render_dir="$profile_parent/.rendered.staging.$$"
 bin_dir="$HOME/.local/bin"
 opencode_dir="$HOME/.config/opencode"
 opencode_config="$opencode_dir/sovereign.json"
@@ -45,11 +46,17 @@ if [[ -e "$profile_dir" && "$upgrade" -ne 1 ]]; then
   exit 73
 fi
 
-cleanup() { [[ -d "$stage_dir" ]] && rm -rf "$stage_dir"; }
+cleanup() {
+  [[ -d "$stage_dir" ]] && rm -rf "$stage_dir"
+  [[ -d "$render_dir" ]] && rm -rf "$render_dir"
+}
 trap cleanup EXIT
 mkdir -p "$stage_dir" "$bin_dir"
-install -m 600 "$repo_dir/profile/settings.json" "$stage_dir/settings.json"
-install -m 600 "$repo_dir/profile/models.json" "$stage_dir/models.json"
+python3 "$repo_dir/scripts/render-profile.py" \
+  --profile "$repo_dir/profiles/studio-qwen-pro6000/profile.json" \
+  --output "$render_dir"
+install -m 600 "$render_dir/pi/settings.json" "$stage_dir/settings.json"
+install -m 600 "$render_dir/pi/models.json" "$stage_dir/models.json"
 
 PI_CODING_AGENT_DIR="$stage_dir" pi install npm:pi-subagents@0.62.0
 PI_CODING_AGENT_DIR="$stage_dir" pi install npm:oh-my-pi@0.2.0
@@ -74,7 +81,7 @@ fi
 mkdir -p "$profile_parent"
 mv "$stage_dir" "$profile_dir"
 install -d -m 700 "$opencode_dir"
-install -m 600 "$repo_dir/opencode/sovereign.json" "$opencode_config"
+install -m 600 "$render_dir/opencode/sovereign.json" "$opencode_config"
 install -m 700 "$repo_dir/bin/pi-sovereign" "$bin_dir/pi-sovereign"
 install -m 700 "$repo_dir/bin/sovkit" "$bin_dir/sovkit"
 install -m 700 "$repo_dir/bin/sovkit-tunnel" "$bin_dir/sovkit-tunnel"
