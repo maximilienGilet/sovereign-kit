@@ -31,7 +31,7 @@ cd qwen-sovereign-harness
 When a Qwen pod is running, keep an SSH tunnel in one terminal:
 
 ```bash
-qwen-sovereign-tunnel <ssh-host> <ssh-port>
+qwen-sovereign-tunnel <ssh-host> <ssh-port> <tunnel-user> <identity-file> <known-hosts-file>
 ```
 
 Then start the harness in another:
@@ -65,6 +65,10 @@ Use one shared endpoint, but do not submit every large prompt at once:
 4. Return worker summaries to the principal rather than copying raw transcripts wholesale.
 
 This protects principal-agent TTFT while preserving shared GPU utilization. See [architecture](docs/architecture.md).
+
+## Optional Vast.ai referral
+
+Vast.ai permits referral links in GitHub repositories. A dedicated referral account is required for cash payouts; this repository does **not** contain a referral URL yet. See [the referral guide](docs/vast-referral.md) before adding one.
 
 ## Security boundary
 

@@ -18,12 +18,13 @@ Review of the client-side Pi/Oh-My-Pi profile, the installer, SSH local-forwardi
 
 ## Residual risks and operating rules
 
-1. **SGLang authentication:** the reference endpoint is keyless. That is acceptable only while both ends bind loopback and the SSH/VPN path is authenticated. Do not expose port 30000 publicly.
-2. **Remote model code:** `--trust-remote-code` is executable supply-chain input. The documented Hugging Face revision is pinned; review and re-pin every upgrade.
-3. **Rented GPU sovereignty:** network privacy is not sufficient for a contractual sovereignty claim. Validate provider, region, contract/DPA, retention, disk handling, logs, egress and access controls per client.
-4. **Pi packages:** version pinning reduces drift but does not replace source review. Upgrade deliberately and rerun the installer smoke test plus this review.
-5. **SSH trust:** first connection requires human verification of the server host key. Do not disable host-key checking or add `StrictHostKeyChecking=no`.
-6. **Runtime verification:** before processing client material, use `/subagents-models` and stop if parent or workers resolve to another provider.
+1. **SGLang authentication:** the reference endpoint is keyless. Loopback plus authenticated SSH are mandatory but do not prevent another process under the same macOS account from calling the local port. Enable SGLang API authentication with a unique deployment secret whenever the deployed SGLang version supports it; keep the secret in macOS Keychain or a local ignored `600` file. Never expose port 30000 publicly.
+2. **Remote model code:** `--trust-remote-code` is executable supply-chain input. The documented Hugging Face revision is pinned; review and re-pin every upgrade. Pin the GPU container by OCI digest and restrict server egress before client workloads.
+3. **Pi egress:** `modelScope` prevents model-provider fallback; it is not a network sandbox. Audit/allowlist Pi plugins and tools, and enforce OS/network egress policy if client data must be contractually confined to the tunnel.
+4. **Rented GPU sovereignty:** network privacy is not sufficient for a contractual sovereignty claim. Validate provider, region, contract/DPA, retention, disk handling, logs, egress and access controls per client.
+5. **Pi packages:** version pinning reduces drift but does not replace source review. Upgrade deliberately and rerun the installer smoke test plus this review.
+6. **SSH trust:** use a dedicated unprivileged tunnel account, identity and verified known-hosts file. The client helper enforces `StrictHostKeyChecking=yes`; do not disable it.
+7. **Runtime verification:** before processing client material, use `/subagents-models` and stop if parent or workers resolve to another provider.
 
 ## Required checks before each client deployment
 

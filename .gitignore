@@ -2,10 +2,15 @@
 **/auth.json
 **/oauth.json
 **/.env
-**/*token*
-**/*secret*
+**/.env.*
+**/.npmrc
+**/id_ed25519
+**/id_rsa
+**/credentials*.json
 *.key
 *.pem
+*.p12
+*.pfx
 
 # Pi runtime artifacts
 .pi/agent/sessions/

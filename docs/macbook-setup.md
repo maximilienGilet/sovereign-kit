@@ -40,11 +40,16 @@ exec zsh
 
 The GPU server must bind SGLang to loopback. Do not expose port 30000 to the Internet.
 
+Use a dedicated, unprivileged tunnel user and SSH identity. Verify the server host key out of band, then save that fingerprint in a dedicated known-hosts file (do **not** accept a first-use key blindly).
+
 ```bash
-qwen-sovereign-tunnel <ssh-host> <ssh-port>
+qwen-sovereign-tunnel \
+  <ssh-host> <ssh-port> <tunnel-user> \
+  ~/.ssh/qwen-sovereign_ed25519 \
+  ~/.ssh/qwen-sovereign_known_hosts
 ```
 
-This command deliberately binds its local port to `127.0.0.1`, so no other machine on your LAN can call it. Keep it running while using Pi.
+This command deliberately binds its local port to `127.0.0.1`, so no other machine on your LAN can call it. It requires `StrictHostKeyChecking=yes`, the dedicated identity and the verified host-key file. Keep it running while using Pi.
 
 ## 4. Start the sovereign harness
 

@@ -35,6 +35,9 @@ Parameters should be revalidated when changing the GPU, model revision, SGLang r
 - `--host 127.0.0.1`, never `0.0.0.0`.
 - No public inbound firewall rule for SGLang/vLLM ports.
 - Use SSH local forwarding, a client-approved VPN, or Tailscale.
+- Use a dedicated unprivileged SSH tunnel account. On the server restrict it to local forwarding and `127.0.0.1:30000`; do not use a privileged `root` account for production client work.
+- Verify the SSH host key out of band and require a dedicated known-hosts file with `StrictHostKeyChecking=yes`.
+- Enable SGLang API authentication with a per-deployment secret when supported by the pinned SGLang build. Keep that secret outside the repository and preserve loopback binding.
 - Do not put API keys, SSH private keys, instance connection strings, or provider tokens in this repository.
 - Destroy test instances when benchmarks finish.
 

@@ -1,4 +1,6 @@
-# Benchmark mono-agent 262K — RTX PRO 6000 S / SGLang
+# Benchmark mono-agent 262K — historique, non recette de production
+
+> **Avis sécurité :** cette capture historique utilise une image de développement et ne fixe pas la révision Hugging Face. Ne pas la reproduire telle quelle pour une charge client. La recette de production révisée est dans [`docs/server-launch.md`](../docs/server-launch.md), avec révision du modèle épinglée, contrôles de tunnel et exigences de revue supplémentaires.
 
 Date : 2026-09-01. Test synthétique uniquement ; aucun code ou contexte client n'a été transmis.
 

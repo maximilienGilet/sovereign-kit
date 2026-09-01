@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# Usage: qwen-sovereign-tunnel <ssh-host> <ssh-port>
+# Usage: qwen-sovereign-tunnel <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file>
 # Private forward only: remote 127.0.0.1:30000 -> local 127.0.0.1:30000.
 set -euo pipefail
-if [[ $# -ne 2 ]]; then
-  printf 'Usage: %s <ssh-host> <ssh-port>\n' "${0##*/}" >&2
+if [[ $# -ne 5 ]]; then
+  printf 'Usage: %s <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file>\n' "${0##*/}" >&2
   exit 64
 fi
+host="$1"
+port="$2"
+user="$3"
+identity_file="$4"
+known_hosts_file="$5"
+[[ -r "$identity_file" ]] || { printf 'SSH identity is not readable: %s\n' "$identity_file" >&2; exit 66; }
+[[ -r "$known_hosts_file" ]] || { printf 'Verified known-hosts file is not readable: %s\n' "$known_hosts_file" >&2; exit 66; }
 exec ssh -N \
+  -o BatchMode=yes \
   -o ExitOnForwardFailure=yes \
+  -o IdentitiesOnly=yes \
   -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile="$known_hosts_file" \
+  -i "$identity_file" \
   -L 127.0.0.1:30000:127.0.0.1:30000 \
-  -p "$2" "root@$1"
+  -p "$port" "$user@$host"
