@@ -12,7 +12,7 @@ It does not define a business workload, an agent permission model, a tenant, a c
 
 ## Planned, not published profiles
 
-- **Solo RTX 5090:** requires a pinned runtime, exact context/concurrency settings, and target-harness benchmarks before release.
+- **[Solo RTX 5090 candidate](profiles/solo-rtx5090.md):** a fast individual-route design under measurement; no released configuration or capacity claim yet.
 - **Lite:** requires a chosen explicit endpoint, region, model/version, authentication path, no-fallback policy, and latency/error evidence. A managed European API does not inherit self-hosted claims.
 
 ## Workloads
