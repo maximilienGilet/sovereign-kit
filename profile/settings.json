@@ -1,0 +1,19 @@
+{
+  "theme": "dark",
+  "defaultProvider": "sovereign-qwen",
+  "defaultModel": "qwen3.8-27b-nvfp4",
+  "defaultThinkingLevel": "high",
+  "packages": [
+    "npm:pi-subagents@0.62.0",
+    "npm:oh-my-pi@0.2.0"
+  ],
+  "subagents": {
+    "defaultModel": "sovereign-qwen/qwen3.8-27b-nvfp4",
+    "defaultThinking": "high",
+    "modelScope": {
+      "enforce": true,
+      "strict": true,
+      "allow": ["sovereign-qwen/*"]
+    }
+  }
+}

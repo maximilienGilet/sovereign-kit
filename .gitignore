@@ -1,0 +1,18 @@
+# Credentials and runtime state
+**/auth.json
+**/oauth.json
+**/.env
+**/*token*
+**/*secret*
+*.key
+*.pem
+
+# Pi runtime artifacts
+.pi/agent/sessions/
+.pi/agent/models-store.json
+.pi/agent/trust.json
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Runs Pi with the isolated Qwen-only profile.
+set -euo pipefail
+export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/profiles/sovereign/agent}"
+exec pi "$@"

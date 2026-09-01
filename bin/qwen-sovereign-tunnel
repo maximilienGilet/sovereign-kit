@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Usage: qwen-sovereign-tunnel <ssh-host> <ssh-port>
+# Private forward only: remote 127.0.0.1:30000 -> local 127.0.0.1:30000.
+set -euo pipefail
+if [[ $# -ne 2 ]]; then
+  printf 'Usage: %s <ssh-host> <ssh-port>\n' "${0##*/}" >&2
+  exit 64
+fi
+exec ssh -N \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -L 127.0.0.1:30000:127.0.0.1:30000 \
+  -p "$2" "root@$1"
