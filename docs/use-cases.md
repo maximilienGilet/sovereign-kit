@@ -1,7 +1,8 @@
-# OpenAI-compatible integrations
+# Connect any OpenAI-compatible client
 
-Sovereign Kit exposes one local OpenAI-compatible route:
+This is intentionally the short, general path: set a base URL, a compatibility API key, and the approved model. It applies to any application that already lets you configure an OpenAI-compatible endpoint.
 
+For the specific development setup — isolated Pi, Oh-My-Pi, pi-subagents, and locked OpenCode — use [Quick start](quickstart.md) and [Local setup](local-setup.md).
 ```text
 http://127.0.0.1:30000/v1
 ```
