@@ -43,6 +43,13 @@ A workflow can ask the model for structured advice or a proposed tool call, then
 
 For sensitive actions, keep human approval and business-rule validation outside the model.
 
+## Guides
+
+- [Coding agents](quickstart.md) — the V1 adapter path for Pi and OpenCode.
+- [Internal text assistant](use-cases/internal-text-assistant.md) — client-owned UI and access control.
+- [Read-only retrieval-assisted answers](use-cases/read-only-retrieval.md) — client-owned permissions and retrieval.
+- [Controlled automation](use-cases/controlled-automation.md) — model proposal, client validation, client execution.
+
 ## Not included in V1
 
 - shared multi-user chat;
