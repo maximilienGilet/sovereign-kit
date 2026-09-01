@@ -76,6 +76,7 @@ mv "$stage_dir" "$profile_dir"
 install -d -m 700 "$opencode_dir"
 install -m 600 "$repo_dir/opencode/sovereign.json" "$opencode_config"
 install -m 700 "$repo_dir/bin/pi-sovereign" "$bin_dir/pi-sovereign"
+install -m 700 "$repo_dir/bin/sovkit" "$bin_dir/sovkit"
 install -m 700 "$repo_dir/bin/sovkit-tunnel" "$bin_dir/sovkit-tunnel"
 install -m 700 "$repo_dir/bin/opencode-sovereign" "$bin_dir/opencode-sovereign"
 trap - EXIT

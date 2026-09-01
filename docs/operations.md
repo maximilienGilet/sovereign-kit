@@ -12,11 +12,13 @@ Use this checklist each time you open a route for client work.
      <identity-file> <known-hosts-file>
    ```
 
-3. In a second terminal, confirm that the local endpoint answers:
+3. In a second terminal, run the local diagnostic:
 
    ```bash
-   curl --fail --silent --show-error http://127.0.0.1:30000/v1/models
+   sovkit doctor
    ```
+
+   It checks the profile, provider locks, extensions, executables, overrides, and `http://127.0.0.1:30000/v1/models`. A local endpoint warning means the tunnel or remote service is unavailable; a configuration failure blocks use.
 
 4. Start `pi-sovereign` or `opencode-sovereign`.
 5. In Pi, run `/subagents-models` and confirm that every role resolves to `sovereign-qwen/qwen3.8-27b-nvfp4`.

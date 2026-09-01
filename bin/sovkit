@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Sovereign Kit local diagnostics.
+set -euo pipefail
+
+usage() {
+  printf 'Usage: %s doctor\n' "${0##*/}" >&2
+}
+
+[[ $# -eq 1 && "$1" == "doctor" ]] || { usage; exit 64; }
+
+profile_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/profiles/sovereign/agent}"
+opencode_config="${SOVEREIGN_OPENCODE_CONFIG:-$HOME/.config/opencode/sovereign.json}"
+endpoint="${SOVKIT_ENDPOINT_URL:-http://127.0.0.1:30000/v1/models}"
+failures=0
+warnings=0
+
+pass() { printf 'PASS  %s\n' "$1"; }
+warn() { printf 'WARN  %s\n' "$1"; warnings=$((warnings + 1)); }
+fail() { printf 'FAIL  %s\n' "$1"; failures=$((failures + 1)); }
+
+printf 'Sovereign Kit doctor\n'
+printf 'Profile: %s\n' "$profile_dir"
+printf 'Endpoint: %s\n\n' "$endpoint"
+
+if [[ -r "$profile_dir/settings.json" && -r "$profile_dir/models.json" ]]; then
+  pass 'Pi profile is readable'
+else
+  fail 'Pi profile is missing or unreadable; run install-macos.sh'
+fi
+
+if python3 - "$profile_dir" <<'PY'
+import json
+import pathlib
+import sys
+profile = pathlib.Path(sys.argv[1])
+settings = json.loads((profile / 'settings.json').read_text())
+models = json.loads((profile / 'models.json').read_text())
+assert settings['defaultProvider'] == 'sovereign-qwen'
+assert settings['defaultModel'] == 'qwen3.8-27b-nvfp4'
+assert settings['subagents']['modelScope'] == {
+    'enforce': True, 'strict': True, 'allow': ['sovereign-qwen/*']
+}
+assert list(models['providers']) == ['sovereign-qwen']
+provider = models['providers']['sovereign-qwen']
+assert provider['baseUrl'] == 'http://127.0.0.1:30000/v1'
+assert provider['models'][0]['id'] == 'qwen3.8-27b-nvfp4'
+PY
+then
+  pass 'Pi provider lock is intact'
+else
+  fail 'Pi provider lock differs from the shipped sovereign configuration'
+fi
+
+if [[ -e "$profile_dir/npm/node_modules/pi-subagents" && -e "$profile_dir/npm/node_modules/oh-my-pi/dist/extension.js" ]]; then
+  pass 'Pi extensions are installed'
+else
+  fail 'Pi extensions are missing; rerun install-macos.sh --upgrade'
+fi
+
+if python3 - "$opencode_config" <<'PY'
+import json
+import pathlib
+import sys
+path = pathlib.Path(sys.argv[1])
+config = json.loads(path.read_text())
+assert config['model'] == 'sovereign-qwen/qwen3.8-27b-nvfp4'
+assert config['enabled_providers'] == ['sovereign-qwen']
+provider = config['provider']['sovereign-qwen']
+assert provider['options']['baseURL'] == 'http://127.0.0.1:30000/v1'
+PY
+then
+  pass 'OpenCode provider lock is intact'
+else
+  fail 'OpenCode configuration is missing or differs from the shipped sovereign configuration'
+fi
+
+if command -v pi >/dev/null 2>&1; then
+  pass "Pi is available ($(pi --version 2>/dev/null | head -n 1 || printf 'version unavailable'))"
+else
+  fail 'Pi is not on PATH'
+fi
+
+if command -v opencode >/dev/null 2>&1; then
+  pass "OpenCode is available ($(opencode --version 2>/dev/null | head -n 1 || printf 'version unavailable'))"
+else
+  warn 'OpenCode is not on PATH; install opencode-ai@1.18.25 to use opencode-sovereign'
+fi
+
+if [[ -n "${PI_CODING_AGENT_DIR:-}" ]]; then
+  warn 'PI_CODING_AGENT_DIR overrides the standard Pi profile; inspect it before client work'
+fi
+if [[ -n "${SOVEREIGN_OPENCODE_CONFIG:-}" ]]; then
+  warn 'SOVEREIGN_OPENCODE_CONFIG overrides the standard OpenCode config; inspect it before client work'
+fi
+
+if python3 - "$endpoint" <<'PY'
+import sys
+import urllib.error
+import urllib.request
+url = sys.argv[1]
+request = urllib.request.Request(url)
+key = __import__('os').environ.get('QWEN_LOCAL_API_KEY')
+if key:
+    request.add_header('Authorization', f'Bearer {key}')
+try:
+    with urllib.request.urlopen(request, timeout=3) as response:
+        if response.status < 400:
+            raise SystemExit(0)
+except urllib.error.HTTPError as error:
+    if error.code in (401, 403):
+        print(f'endpoint requires authentication (HTTP {error.code})', file=sys.stderr)
+        raise SystemExit(2)
+    raise SystemExit(1)
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(1)
+PY
+then
+  pass 'Local endpoint answered /v1/models'
+else
+  status=$?
+  if [[ "$status" -eq 2 ]]; then
+    warn 'Local endpoint requires authentication; OpenCode can use QWEN_LOCAL_API_KEY, the shipped Pi profile cannot'
+  else
+    warn 'Local endpoint did not answer; start sovkit-tunnel and the remote SGLang service'
+  fi
+fi
+
+printf '\n'
+if [[ "$failures" -gt 0 ]]; then
+  printf 'Doctor found %d failure(s) and %d warning(s). Do not send client material yet.\n' "$failures" "$warnings"
+  exit 1
+fi
+if [[ "$warnings" -gt 0 ]]; then
+  printf 'Doctor found no configuration failures and %d warning(s). Review warnings before client work.\n' "$warnings"
+  exit 0
+fi
+printf 'Doctor found no failures or warnings.\n'

@@ -69,6 +69,12 @@ pi-sovereign
 opencode-sovereign
 ```
 
+Before any client work, run:
+
+```bash
+sovkit doctor
+```
+
 For Pi, run `/subagents-models` before client work. The parent and every worker should show:
 
 ```text
@@ -83,8 +89,7 @@ The reference server command uses `--trust-remote-code`. That executes model-pro
 
 A local tunnel limits network exposure. It does not answer questions about a provider's contract, region, retention, disks, logs, egress, or access controls. Those are deployment and client decisions.
 
-The local port is available to processes running under the same macOS account. Enable SGLang authentication when the chosen server build supports it, and keep its secret outside this repository.
-
+The local port is available to processes running under the same macOS account. The shipped Pi profile uses the V1 keyless SGLang route behind SSH loopback. An authenticated endpoint is supported only for O...[truncated]
 ## Benchmarks
 
 These are synthetic capacity tests on one RTX PRO 6000 S (96 GB), not performance or cost promises:

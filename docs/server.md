@@ -4,30 +4,9 @@ This repository does not provision the GPU host. The operator must create the in
 
 The local clients expect an OpenAI-compatible Qwen/SGLang endpoint at remote `127.0.0.1:30000`, reachable through SSH, VPN, or Tailscale.
 
-## Reference launch contract
+## Digest-locked container recipe
 
-The following command is the reviewed reference for the published Qwen profile. Revalidate it whenever you change the GPU, server release, model revision, quantization, context budget, or concurrency.
-
-```bash
-sglang serve \
-  --trust-remote-code \
-  --model-path RadixArk/Qwen3.8-27B-NVFP4 \
-  --revision 319f741cce68d7914884900c138a1fbb70a42f30 \
-  --context-length 262144 \
-  --kv-cache-dtype fp8_e4m3 \
-  --mem-fraction-static 0.85 \
-  --attention-backend flashinfer \
-  --chunked-prefill-size 2048 \
-  --max-running-requests 5 \
-  --cuda-graph-max-bs 5 \
-  --reasoning-parser qwen3 \
-  --tool-call-parser qwen3_coder \
-  --host 127.0.0.1 \
-  --port 30000
-```
-
-`--host 127.0.0.1` is mandatory. Do not change it to `0.0.0.0` or add a public firewall rule for the inference port.
-
+The repository pins the Linux AMD64 SGLang image in [`server/image.lock`](../server/image.lock). `server/run-sglang.sh` reads that exact OCI digest, mounts the local Hugging Face cache, and starts...[truncated]
 ## SSH account
 
 Use a dedicated, unprivileged SSH account for the tunnel. Do not use `root` for client work. Restrict the account and its authorized key to the forwarding it needs on the GPU host.
