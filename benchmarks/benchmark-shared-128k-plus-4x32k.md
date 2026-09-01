@@ -1,46 +1,46 @@
-# Benchmark partagé Qwen — 128K principal + 4×32K sous-agents
+# Shared Qwen benchmark: 128K principal + 4 × 32K workers
 
-Date : 2026-09-01. Charge synthétique, sans code ni contexte client. Instance détruite après le test.
+Date: 2026-09-01. Synthetic workload, with no client code or context. The instance was destroyed after the test.
 
-## Infrastructure et serveur
+## Infrastructure and server
 
-- GPU : RTX PRO 6000 S, 97 887 MiB.
-- Prix observé : $1.4333/h.
-- Runtime : SGLang `lmsysorg/sglang:dev-qwen38-27b-dflash2`.
-- Modèle : `RadixArk/Qwen3.8-27B-NVFP4`.
-- Contexte maximum serveur : 262 144.
-- KV cache : FP8 E4M3 ; attention : FlashInfer.
+- GPU: RTX PRO 6000 S, 97,887 MiB.
+- Observed price: $1.4333/h.
+- Runtime: SGLang `lmsysorg/sglang:dev-qwen38-27b-dflash2`.
+- Model: `RadixArk/Qwen3.8-27B-NVFP4`.
+- Server context limit: 262,144 tokens.
+- KV cache: FP8 E4M3; attention backend: FlashInfer.
 - `max-running-requests=5`, `cuda-graph-max-bs=5`.
 
-## Charge simultanée
+## Concurrent workload
 
-Les cinq requêtes ont été envoyées simultanément au même endpoint OpenAI-compatible :
+All five requests were sent at the same time to the same OpenAI-compatible endpoint:
 
-| Rôle | Prompt exact | Sortie demandée |
+| Role | Exact prompt | Requested output |
 |---|---:|---:|
-| Principal | 128 000 tokens | 4 096 tokens |
-| Sous-agent 1–4 | 32 000 tokens chacun | 1 024 tokens chacun |
+| Principal | 128,000 tokens | 4,096 tokens |
+| Workers 1–4 | 32,000 tokens each | 1,024 tokens each |
 
-Total d'entrées actives : 256 000 tokens. Total de sortie : 8 192 tokens.
+Total active input: 256,000 tokens. Total requested output: 8,192 tokens.
 
-## Résultats
+## Results
 
-| Rôle | HTTP | TTFT | Durée E2E | Sortie | Débit après premier token |
+| Role | HTTP | TTFT | End-to-end time | Output | Decode after first token |
 |---|---:|---:|---:|---:|---:|
-| Principal | 200 | 60.165 s | 133.687 s | 4 096 | 55.712 tok/s |
-| Sous-agent 1 | 200 | 9.862 s | 33.028 s | 1 024 | 44.203 tok/s |
-| Sous-agent 2 | 200 | 13.079 s | 33.028 s | 1 024 | 51.332 tok/s |
-| Sous-agent 3 | 200 | 3.406 s | 33.027 s | 1 024 | 34.570 tok/s |
-| Sous-agent 4 | 200 | 6.720 s | 33.028 s | 1 024 | 38.924 tok/s |
+| Principal | 200 | 60.165 s | 133.687 s | 4,096 | 55.712 tok/s |
+| Worker 1 | 200 | 9.862 s | 33.028 s | 1,024 | 44.203 tok/s |
+| Worker 2 | 200 | 13.079 s | 33.028 s | 1,024 | 51.332 tok/s |
+| Worker 3 | 200 | 3.406 s | 33.027 s | 1,024 | 34.570 tok/s |
+| Worker 4 | 200 | 6.720 s | 33.028 s | 1,024 | 38.924 tok/s |
 
-- Débit agrégé des quatre sous-agents sur leur fenêtre de 33.028 s : **124.02 tok/s**.
-- Débit agrégé de la charge complète (8 192 tokens / 133.687 s) : **61.28 tok/s**.
-- Mémoire observée pendant la charge : 85 837 / 97 887 MiB ; marge ~11.77 GiB.
+- Aggregate worker throughput over their 33.028-second window: **124.02 tok/s**.
+- Aggregate throughput for the full workload (8,192 tokens / 133.687 seconds): **61.28 tok/s**.
+- Memory during the workload: 85,837 / 97,887 MiB; about 11.77 GiB remained.
 
-## Conclusion
+## Result
 
-Le même serveur Qwen a accepté et servi le profil sélectionné sans OOM ni file bloquée : un principal à 128K et quatre sous-agents à 32K. Les sous-agents sont revenus en ~33 s, pendant que le principal continuait sa génération longue.
+One Qwen server accepted and served the selected workload without OOM or deadlock: a 128K principal and four 32K workers. The workers returned in about 33 seconds while the principal continued its long generation.
 
-Le principal souffre d'un TTFT de ~60 s car son préfill 128K est en concurrence avec les quatre prefills 32K ; le compromis de production doit donc être une politique de priorité, plutôt qu'envoyer les cinq gros prompts exactement au même instant.
+The principal's roughly 60-second TTFT came from competing with four 32K prefills. A production workload should therefore prioritise the principal rather than submit five large prompts at the same instant.
 
-Ce benchmark valide capacité + concurrence avec prompts synthétiques. Il ne valide ni la qualité sur dépôts réels, ni le meilleur ordonnanceur pour le harness.
+This benchmark validates capacity and concurrency for synthetic prompts. It does not validate quality on real repositories or choose the best scheduler for the harness.

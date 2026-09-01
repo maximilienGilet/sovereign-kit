@@ -1,22 +1,22 @@
-# Benchmark mono-agent 262K — historique, non recette de production
+# 262K single-agent benchmark: historical, not a production recipe
 
-> **Avis sécurité :** cette capture historique utilise une image de développement et ne fixe pas la révision Hugging Face. Ne pas la reproduire telle quelle pour une charge client. La recette de production révisée est dans [`docs/server-launch.md`](../docs/server-launch.md), avec révision du modèle épinglée, contrôles de tunnel et exigences de revue supplémentaires.
+> **Security note:** this historical capture uses a development image and does not pin a Hugging Face revision. Do not reproduce it as-is for client workloads. The reviewed deployment recipe is in [`docs/server-launch.md`](../docs/server-launch.md); it pins the model revision and adds tunnel and review requirements.
 
-Date : 2026-09-01. Test synthétique uniquement ; aucun code ou contexte client n'a été transmis.
+Date: 2026-09-01. Synthetic test only. No client code or context was sent.
 
-## Objectif
+## Goal
 
-Valider qu'un seul serveur Qwen3.8-27B peut accepter une requête proche de sa fenêtre native de 262 144 tokens, puis générer une sortie longue.
+Test whether one Qwen3.8-27B server could accept a request near its native 262,144-token window and then produce a long completion.
 
 ## Infrastructure
 
-- GPU : NVIDIA RTX PRO 6000 Blackwell Server Edition, 97 887 MiB VRAM.
-- Runtime : image SGLang `lmsysorg/sglang:dev-qwen38-27b-dflash2`.
-- Modèle : `RadixArk/Qwen3.8-27B-NVFP4`, dérivé quantifié NVFP4 de Qwen3.8-27B.
-- Endpoint : lié à `127.0.0.1:30000` sur le pod.
-- Concurrence : 1.
+- GPU: NVIDIA RTX PRO 6000 Blackwell Server Edition, 97,887 MiB VRAM.
+- Runtime: SGLang image `lmsysorg/sglang:dev-qwen38-27b-dflash2`.
+- Model: `RadixArk/Qwen3.8-27B-NVFP4`, an NVFP4 quantization of Qwen3.8-27B.
+- Endpoint: bound to `127.0.0.1:30000` on the pod.
+- Concurrency: 1.
 
-## Commande serveur
+## Server command
 
 ```bash
 sglang serve \
@@ -34,28 +34,30 @@ sglang serve \
   --host 127.0.0.1 --port 30000
 ```
 
-## Charge générée
+## Generated workload
 
-- Prompt tokenisé localement avec le tokenizer du checkpoint : **246 000 tokens exacts**.
-- `max_tokens` : **8 192**.
-- Réponse API : HTTP 200, `finish_reason: length`.
-- Usage retourné par le serveur : `prompt_tokens: 246000`, `completion_tokens: 8192`, `total_tokens: 254192`.
+- Prompt tokenized locally with the checkpoint tokenizer: **246,000 exact tokens**.
+- `max_tokens`: **8,192**.
+- API response: HTTP 200, `finish_reason: length`.
+- Server-reported usage: `prompt_tokens: 246000`, `completion_tokens: 8192`, `total_tokens: 254192`.
 
-## Mesures observées
+## Observed measurements
 
-- Après chargement des poids : 20.14 Go utilisés, 74.13 Go disponibles.
-- Pool Mamba : 0.54 Go d'état convolution + 27.70 Go d'état SSM.
-- Pool KV FP8 réservé : 1 035 364 tokens, K 15.80 Go + V 15.80 Go.
-- Après graph capture : ~12.33 Go disponibles.
-- Pendant la requête proche de 254K tokens : 85 749 / 97 887 MiB utilisés, GPU à 100 %.
-- Decode à contexte ~246K–254K : ~48.2 tok/s, suivant les logs SGLang.
+- After loading weights: 20.14 GiB used, 74.13 GiB available.
+- Mamba pool: 0.54 GiB convolution state + 27.70 GiB SSM state.
+- Reserved FP8 KV pool: 1,035,364 tokens, K 15.80 GiB + V 15.80 GiB.
+- After graph capture: about 12.33 GiB available.
+- During the near-254K-token request: 85,749 / 97,887 MiB used, GPU at 100%.
+- Decode at roughly 246K–254K context: about 48.2 tok/s, from SGLang logs.
 
-## Conclusion
+## Result
 
-Le serveur a réellement accepté puis généré à partir de 246K tokens d'entrée et 8 192 tokens de sortie, sans OOM ni troncature. Cette RTX PRO 6000 S 96 Go est donc une base viable pour **un** agent à contexte total 262K avec ce runtime/modèle. Cette charge synthétique valide la capacité et le débit, pas la qualité de raisonnement sur un vrai dépôt.
+The server accepted a 246K-token input and generated 8,192 output tokens without OOM or truncation. This RTX PRO 6000 S 96 GB configuration can therefore carry **one** 262K-total-context agent with this runtime and model.
 
-## Limites / suivi
+This synthetic workload validates capacity and observed decode speed. It does not validate reasoning quality on a real codebase.
 
-- Le runtime a signalé que le KV FP8 n'avait pas de facteurs de scaling fournis et utilisait 1.0 ; il faut comparer la qualité aux KV BF16 ou à une quantification calibrée sur une charge de code réelle.
-- Le test ne valide ni plusieurs agents, ni les 262K tokens utiles de code hétérogène, ni la qualité long-context.
-- L'instance de test a été détruite après le résultat.
+## Limits and follow-up
+
+- The runtime reported that no KV FP8 scaling factors were supplied and used 1.0. Compare quality against BF16 KV or calibrated quantization on a real coding workload.
+- This test does not validate multiple agents, 262K useful tokens of mixed code, or long-context quality.
+- The test instance was destroyed after the result.
