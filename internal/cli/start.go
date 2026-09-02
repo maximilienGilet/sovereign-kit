@@ -101,7 +101,8 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 		var healthErr error
 		select {
 		case healthErr = <-healthDone:
-			if !timer.Stop() {
+			timerExpired := !timer.Stop()
+			if timerExpired {
 				select {
 				case <-timer.C:
 				default:
@@ -111,7 +112,7 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if !deps.Clock.Now().Before(deadline) {
+			if timerExpired || !deps.Clock.Now().Before(deadline) {
 				return healthTimeoutError(deps.PollTimeout, healthErr)
 			}
 			if healthErr == nil {
