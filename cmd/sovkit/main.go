@@ -13,6 +13,7 @@ import (
 	"github.com/maximilienGilet/sovereign-kit/internal/cli"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
 	"github.com/maximilienGilet/sovereign-kit/recipes"
+	"github.com/maximilienGilet/sovereign-kit/internal/recipe"
 	"github.com/maximilienGilet/sovereign-kit/internal/route"
 	"github.com/maximilienGilet/sovereign-kit/internal/setup"
 	"github.com/maximilienGilet/sovereign-kit/internal/vast"
@@ -103,7 +104,31 @@ Commands:
 	}
 }
 
+type productionDependencies struct {
+	Prompter cli.SetupPrompter
+	Getenv   func(string) string
+	HomeDir  func() (string, error)
+	RunVast  func(context.Context, string, recipe.Recipe, setup.Options, setup.Dependencies) (setup.Result, error)
+}
+
 func productionApplication() application {
+	return productionApplicationWith(productionDependencies{
+		Getenv:  os.Getenv,
+		HomeDir: os.UserHomeDir,
+		RunVast: setup.RunVast,
+	})
+}
+
+func productionApplicationWith(deps productionDependencies) application {
+	if deps.Getenv == nil {
+		deps.Getenv = os.Getenv
+	}
+	if deps.HomeDir == nil {
+		deps.HomeDir = os.UserHomeDir
+	}
+	if deps.RunVast == nil {
+		deps.RunVast = setup.RunVast
+	}
 	return application{
 		setup: func(input io.Reader, output io.Writer, configPath, defaultUser string) error {
 			recipe, err := recipes.QwenStudio()
@@ -111,11 +136,13 @@ func productionApplication() application {
 				return fmt.Errorf("load Qwen Studio recipe: %w", err)
 			}
 			return cli.Setup(context.Background(), input, output, configPath, defaultUser, cli.SetupDependencies{
-				Getenv:  os.Getenv,
-				HomeDir: os.UserHomeDir,
+				Prompter: deps.Prompter,
+				Getenv:   deps.Getenv,
+				HomeDir:  deps.HomeDir,
 				RunVast: func(ctx context.Context, token, identity string, operator setup.Operator) (setup.Result, error) {
-					return setup.RunVast(ctx, token, recipe, setup.Options{
+					return deps.RunVast(ctx, token, recipe, setup.Options{
 						ConfigPath:    configPath,
+						IdentityFile:  identity,
 						KnownHostsDir: filepath.Join(filepath.Dir(configPath), "known_hosts"),
 						OfferLimit:    5,
 						PollInterval:  5 * time.Second,

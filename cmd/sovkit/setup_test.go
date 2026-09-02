@@ -11,6 +11,9 @@ import (
 
 	"github.com/maximilienGilet/sovereign-kit/internal/cli"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
+	"github.com/maximilienGilet/sovereign-kit/internal/recipe"
+	"github.com/maximilienGilet/sovereign-kit/internal/setup"
+	"github.com/maximilienGilet/sovereign-kit/internal/vast"
 )
 
 type manualSetupPrompter struct {
@@ -27,6 +30,70 @@ func (p manualSetupPrompter) ManualRoute(context.Context, string) (cli.ManualRou
 
 func (manualSetupPrompter) VastIdentity(context.Context, string) (string, error) {
 	return "", nil
+}
+
+type vastSetupPrompter struct {
+	identity string
+}
+
+func (p vastSetupPrompter) SelectProvider(context.Context) (string, error) {
+	return "vast", nil
+}
+
+func (vastSetupPrompter) ManualRoute(context.Context, string) (cli.ManualRoute, error) {
+	return cli.ManualRoute{}, nil
+}
+
+func (p vastSetupPrompter) VastIdentity(context.Context, string) (string, error) {
+	return p.identity, nil
+}
+
+func (vastSetupPrompter) SelectOffer(context.Context, []setup.OfferView) (vast.Offer, error) {
+	return vast.Offer{ID: 1}, nil
+}
+
+func (vastSetupPrompter) ConfirmCost(context.Context, setup.OfferView, int) (bool, error) {
+	return true, nil
+}
+
+func (vastSetupPrompter) ConfirmHostKeys(context.Context, []string) (bool, error) {
+	return true, nil
+}
+
+func TestProductionSetupPassesPromptedIdentityToVastOptions(t *testing.T) {
+	identity := filepath.Join(t.TempDir(), "identity")
+	if err := os.WriteFile(identity, []byte("test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var gotOptions setup.Options
+	var validated string
+	app := productionApplicationWith(productionDependencies{
+		Prompter: vastSetupPrompter{identity: identity},
+		Getenv: func(string) string {
+			return "test-token"
+		},
+		HomeDir: func() (string, error) {
+			return t.TempDir(), nil
+		},
+		RunVast: func(_ context.Context, _ string, _ recipe.Recipe, options setup.Options, deps setup.Dependencies) (setup.Result, error) {
+			gotOptions = options
+			if deps.ValidateIdentity == nil {
+				t.Fatal("production dependencies omitted identity validation")
+			}
+			if err := deps.ValidateIdentity(options.IdentityFile); err != nil {
+				return setup.Result{}, err
+			}
+			validated = options.IdentityFile
+			return setup.Result{InstanceID: 1}, nil
+		},
+	})
+	var output bytes.Buffer
+	if err := app.setup(strings.NewReader(""), &output, "config.toml", "ubuntu"); err != nil {
+		t.Fatal(err)
+	}
+	if gotOptions.IdentityFile != identity || validated != identity {
+		t.Fatalf("identity option=%q validated=%q want %q", gotOptions.IdentityFile, validated, identity)
+	}
 }
 
 func TestRunWithSetupWritesPrivateRouteConfig(t *testing.T) {
