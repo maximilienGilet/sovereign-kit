@@ -313,3 +313,41 @@ func TestStartAbortsBlockedHealthWhenTunnelExits(t *testing.T) {
 		t.Fatalf("stop count = %d, want 1", tunnel.stopCount)
 	}
 }
+type expiredStartTimer struct{}
+
+func (expiredStartTimer) C() <-chan time.Time {
+	return nil
+}
+
+func (expiredStartTimer) Stop() bool {
+	return false
+}
+
+func TestStartRejectsHealthResultAfterTimerExpiry(t *testing.T) {
+	events := []string{}
+	clock := &startTestClock{events: &events, now: time.Unix(0, 0)}
+	tunnel := &startTestTunnel{events: &events, done: make(chan error, 1)}
+	var output strings.Builder
+	deps := startTestDependencies(tunnel, clock, func(_ context.Context, _ string) error {
+		return nil
+	}, func(_ io.Writer) error {
+		t.Fatal("dashboard ran after timer expiry")
+		return nil
+	})
+	previousTimer := newStartTimer
+	t.Cleanup(func() { newStartTimer = previousTimer })
+	newStartTimer = func(time.Duration) startTimer {
+		return expiredStartTimer{}
+	}
+
+	err := Start(context.Background(), &output, startTestConfig(t), deps)
+	if err == nil || !strings.Contains(err.Error(), "healthcheck timed out") {
+		t.Fatalf("error = %v, want healthcheck timeout", err)
+	}
+	if strings.Contains(output.String(), "LIVE: endpoint healthy") {
+		t.Fatalf("output = %q, want no LIVE status", output.String())
+	}
+	if tunnel.stopCount != 1 {
+		t.Fatalf("stop count = %d, want 1", tunnel.stopCount)
+	}
+}

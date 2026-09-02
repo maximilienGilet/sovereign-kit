@@ -16,6 +16,27 @@ import (
 	"github.com/maximilienGilet/sovereign-kit/internal/setup"
 )
 
+type startTimer interface {
+	C() <-chan time.Time
+	Stop() bool
+}
+
+type realStartTimer struct {
+	timer *time.Timer
+}
+
+func (t realStartTimer) C() <-chan time.Time {
+	return t.timer.C
+}
+
+func (t realStartTimer) Stop() bool {
+	return t.timer.Stop()
+}
+
+var newStartTimer = func(duration time.Duration) startTimer {
+	return realStartTimer{timer: time.NewTimer(duration)}
+}
+
 type Tunnel interface {
 	Start() error
 	Done() <-chan error
@@ -97,14 +118,14 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 		go func() {
 			healthDone <- deps.Healthcheck(healthCtx, endpoint)
 		}()
-		timer := time.NewTimer(remaining)
+		timer := newStartTimer(remaining)
 		var healthErr error
 		select {
 		case healthErr = <-healthDone:
 			timerExpired := !timer.Stop()
 			if timerExpired {
 				select {
-				case <-timer.C:
+				case <-timer.C():
 				default:
 				}
 			}
@@ -134,7 +155,7 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 			cancelHealth()
 			<-healthDone
 			return ctx.Err()
-		case <-timer.C:
+		case <-timer.C():
 			cancelHealth()
 			<-healthDone
 			return healthTimeoutError(deps.PollTimeout, lastHealthErr)
