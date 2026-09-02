@@ -70,6 +70,7 @@ func New(entries []Entry) Model {
 	catalog.SetShowStatusBar(false)
 	catalog.SetShowPagination(false)
 	catalog.SetShowHelp(false)
+	catalog.SetShowFilter(false)
 	catalog.Styles.FilterPrompt = accent
 	catalog.Styles.FilterCursor = accent
 	return Model{list: catalog, width: 150, height: 42}
@@ -96,21 +97,22 @@ func (model Model) View() string {
 		"\n" + label.Render("↑↓ browse  ·  / filter  ·  Enter inspect  ·  Space hardware  ·  L launch")
 	leftWidth := clamp(model.width*32/100, 36, 48)
 	rightWidth := max(52, model.width-leftWidth-3)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, model.recipeList(leftWidth), " ", detail(selected.Entry, rightWidth))
+	body := lipgloss.JoinHorizontal(lipgloss.Top, model.recipeList(leftWidth), " ", detail(selected.Entry, rightWidth, model.height))
 	return header + "\n\n" + body + "\n"
 }
 
 func (model *Model) resizeList() {
 	leftWidth := clamp(model.width*32/100, 36, 48)
-	model.list.SetSize(leftWidth-6, max(12, model.height-8))
+	model.list.SetSize(leftWidth-6, max(1, model.height-14))
 }
 
 func (model Model) recipeList(width int) string {
-	content := accent.Render("RECIPES") + "\n" + label.Render("Launchable routes and discovery flows") + "\n\n" + model.list.View()
+	search := model.list.FilterInput.View()
+	content := accent.Render("RECIPES") + "\n" + search + "\n" + label.Render("Launchable routes and discovery flows") + "\n\n" + model.list.View()
 	return panel.Width(width - 6).Render(content)
 }
 
-func detail(entry Entry, width int) string {
+func detail(entry Entry, width, terminalHeight int) string {
 	metrics := strings.Join([]string{
 		metric("MIN. VRAM", entry.VRAM),
 		metric("CONTEXT", entry.Context),
@@ -121,13 +123,6 @@ func detail(entry Entry, width int) string {
 		entry.Speed,
 		label.Render(entry.Detail.Confidence),
 	}, "\n")
-	provenance := strings.Join([]string{
-		label.Render("SOURCE"),
-		entry.Detail.Source,
-		"",
-		label.Render("NEXT STEP"),
-		entry.Detail.Notes,
-	}, "\n")
 	lines := []string{
 		title.Render(entry.Name) + "  " + accent.Render(entry.Status),
 		label.Render(entry.Kind),
@@ -136,10 +131,12 @@ func detail(entry Entry, width int) string {
 		metrics,
 		"",
 		performance,
-		"",
-		provenance,
 	}
-	return panel.Width(width - 6).Height(max(18, 26)).Render(strings.Join(lines, "\n"))
+	if terminalHeight >= 28 {
+		lines = append(lines, "", label.Render("SOURCE"), entry.Detail.Source, "", label.Render("NEXT STEP"), entry.Detail.Notes)
+	}
+	innerHeight := max(8, terminalHeight-8)
+	return panel.Width(width - 6).Height(innerHeight).Render(strings.Join(lines, "\n"))
 }
 
 func metric(name, value string) string {
