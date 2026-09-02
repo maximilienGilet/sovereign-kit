@@ -322,13 +322,13 @@ func TestRunVastStopsOnTerminalInstanceStatus(t *testing.T) {
 }
 
 func TestRunVastTimesOutWithInstanceAndBillingWarning(t *testing.T) {
-	api := &fakeVastAPI{offers: []vast.Offer{{ID: 42, GPUVRAMGB: 96, HourlyUSD: 1}}, createID: 987, instances: []vast.Instance{{ID: 987, Status: "loading"}}}
+	api := &fakeVastAPI{offers: []vast.Offer{{ID: 42, GPUVRAMGB: 96, HourlyUSD: 1}}, createID: 987, instances: []vast.Instance{{ID: 987, Status: "loading"}, {ID: 987, Status: "loading"}}}
 	clock := &fakeClock{now: time.Unix(0, 0)}
 	deps := baseDependencies(api, &fakeOperator{confirmCost: true}, &fakeScanner{}, &fakeTrustStore{}, &fakeLauncher{}, clock, nil)
 	options := testOptions()
 	options.PollTimeout = time.Second
 	_, err := RunVast(context.Background(), "token", validRecipe(), options, deps)
-	if err == nil || !strings.Contains(err.Error(), "instance 987") || !strings.Contains(err.Error(), "billing may still be active") {
+	if err == nil || !strings.Contains(err.Error(), "timed out") || !strings.Contains(err.Error(), "instance 987") || !strings.Contains(err.Error(), "billing may still be active") {
 		t.Fatalf("expected timeout warning, got %v", err)
 	}
 }
@@ -345,6 +345,19 @@ func TestRunVastDoesNothingTrustedWhenHostKeysAreDeclined(t *testing.T) {
 	}
 	if trust.calls != 0 || launcher.calls != 0 {
 		t.Fatalf("trusted calls after decline: trust=%d launch=%d", trust.calls, launcher.calls)
+	}
+}
+func TestRunVastDoesNotLaunchWhenTrustPersistenceFails(t *testing.T) {
+	api := &fakeVastAPI{offers: []vast.Offer{{ID: 42, GPUVRAMGB: 96, HourlyUSD: 1}}, createID: 987, instances: []vast.Instance{{ID: 987, Status: "running", SSHHost: "gpu.example", SSHPort: 22022}}}
+	trust := &fakeTrustStore{err: errors.New("trust persistence failed")}
+	launcher := &fakeLauncher{}
+	deps := baseDependencies(api, &fakeOperator{confirmCost: true, confirmKeys: true}, &fakeScanner{keys: HostKeys{Raw: []byte("key"), Fingerprints: []string{"SHA256:abc"}}}, trust, launcher, &fakeClock{now: time.Unix(0, 0)}, nil)
+	_, err := RunVast(context.Background(), "token", validRecipe(), testOptions(), deps)
+	if err == nil || !strings.Contains(err.Error(), "instance 987") || !strings.Contains(err.Error(), "billing may still be active") {
+		t.Fatalf("expected trust persistence warning, got %v", err)
+	}
+	if launcher.calls != 0 {
+		t.Fatalf("launcher calls = %d", launcher.calls)
 	}
 }
 
