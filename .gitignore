@@ -12,6 +12,10 @@
 *.p12
 *.pfx
 
+# Sovereign Kit local configuration and runtime state
+config.toml
+.sovkit/
+
 # Pi runtime artifacts
 .pi/agent/sessions/
 .pi/agent/models-store.json

@@ -1,57 +1,59 @@
 # Security boundary
 
-Sovereign Kit gives the local coding clients one explicit model route. It is useful when a team needs to avoid an accidental model-provider fallback. It is not a legal, regulatory, or network-isolation certification.
+Sovereign Kit gives local coding clients one explicit model route and helps avoid an accidental public-model-provider fallback. It is not a legal, regulatory, network-isolation, or security certification.
 
 ## Controls in this repository
 
-| Control | What it does |
-|---|---|
-| Pi provider configuration | Lists only the local `sovereign-qwen` endpoint |
-| pi-subagents model scope | Restricts parent and workers to `sovereign-qwen/*` |
-| OpenCode inline configuration | Overrides a repository's `opencode.json` and enables only `sovereign-qwen` |
-| SSH tunnel | Forwards Mac loopback to GPU-host loopback |
-| SSH options | Require a dedicated identity, explicit known-hosts file, and strict host-key checking |
-| Installer permissions | Writes profile and OpenCode config as `600`; wrappers as `700` |
+| Control | What it does | What it does not do |
+|---|---|---|
+| Pi provider configuration | Lists only local `sovereign-qwen` | Sandbox Pi tools, shell commands, extensions, or project instructions |
+| `pi-subagents` model scope | Restricts normal parent/worker selection to `sovereign-qwen/*` | Prevent a deliberately replaced profile from changing the route |
+| OpenCode inline configuration | Overrides a repository `opencode.json` and enables only `sovereign-qwen` on the supported release | Validate all OpenCode/plugin behaviour on future versions |
+| SSH tunnel | Forwards Mac loopback to GPU-host loopback | Protect another process under the same Mac account from using the local port |
+| SSH options | Require dedicated identity, explicit known-hosts file, strict host-key checking, batch mode, and forwarding failure | Prove that the remote host or provider is trustworthy |
+| Installer permissions | Writes configuration `600` and wrappers `700` | Protect copied secrets or broader user-account access |
 
-`PI_CODING_AGENT_DIR` and `SOVEREIGN_OPENCODE_CONFIG` let an operator replace the standard profile or configuration. They are intentional administrative overrides, not enforcement boundaries. Treat any replacement configuration as unverified until you inspect it.
+`PI_CODING_AGENT_DIR` and `SOVEREIGN_OPENCODE_CONFIG` intentionally replace the standard profile/configuration. They are administrative overrides, not enforcement boundaries. Treat any replacement as unverified until it has been inspected and tested.
 
-## What remains outside the kit
+## Required checks before client material
 
-- the provider contract, DPA, region, retention, disks, logs, staff access, and deletion process;
-- network egress from agent tools, plugins, browsers, shells, Git, package managers, and MCP servers;
-- the security and behaviour of Pi extensions, OpenCode plugins, model code, container images, and other dependencies;
-- model quality, availability, cost, and capacity;
-- whether a particular client workload is permitted on a particular deployment.
-
-A private route does not automatically make a deployment legally sovereign or GDPR compliant.
-
-## Required deployment checks
-
-Before client material enters the route, confirm:
+Perform these actions at deployment time, not only during initial installation:
 
 ```text
-[ ] SGLang is bound to 127.0.0.1 on the GPU host.
-[ ] No public firewall rule exposes the inference port.
-[ ] The tunnel is bound to 127.0.0.1 on the Mac.
-[ ] The SSH host fingerprint was verified out of band.
-[ ] A dedicated unprivileged SSH account and identity are in use.
-[ ] Pi /subagents-models resolves every role to sovereign-qwen.
-[ ] OpenCode is launched through opencode-sovereign.
-[ ] Provider, region, contractual, retention, and deletion requirements are approved for this client.
-[ ] Instance stop/destroy responsibility is assigned.
+[ ] The GPU host is approved for the intended provider, region, retention, storage, access, and deletion requirements.
+[ ] SGLang listens on 127.0.0.1:30000 on the GPU host.
+[ ] No provider firewall rule, Docker port mapping, Instance Portal, or public URL exposes inference.
+[ ] The Mac tunnel listens only on 127.0.0.1:30000.
+[ ] The SSH fingerprint was verified through an independent channel.
+[ ] A dedicated unprivileged SSH account and dedicated identity are in use.
+[ ] `curl http://127.0.0.1:30000/v1/models` succeeds on both ends of the tunnel.
+[ ] `sovkit doctor` reports no failures; any warnings were deliberately reviewed.
+[ ] Pi `/subagents-models` resolves every role to `sovereign-qwen/qwen3.8-27b-nvfp4`.
+[ ] OpenCode is launched through `opencode-sovereign` and shows the same model.
+[ ] Instance stop/destroy responsibility and spend limit are assigned.
 ```
 
-## Secrets and local state
+## Authentication and local state
 
-Never commit API keys, SSH private keys, known-hosts files, active endpoints, client names, repository content, or private benchmark logs.
+The shipped Studio route is keyless at the SGLang API layer. `local-qwen-tunnel` is a non-secret compatibility identifier used by clients that require an API-key field. Do not mistake it for access control.
 
-The default `local-qwen-tunnel` identifier is not a secret. It exists only for a keyless local SGLang endpoint. When SGLang authentication is available, use a unique deployment secret in local secret storage and preserve loopback binding.
+Do not add SGLang API authentication to the shared Pi + OpenCode V1 route: the shipped Pi configuration cannot inject a deployment secret. An authenticated route requires a separate compatible Pi profile and live validation. Even on the keyless route, other processes under the same macOS account can reach the forwarded local port.
 
-Run these before committing or publishing:
+Never commit API keys, SSH private keys, known-hosts files, active endpoints, client names, repository content, private benchmark logs, or raw terminal output containing any of them. Keep secrets in local secret storage and make non-versioned deployment records private.
+
+Before committing or publishing, run:
 
 ```bash
 python3 scripts/check-secrets.py
 git diff --cached --check
 ```
 
-Report a vulnerability privately as described in [SECURITY.md](../SECURITY.md).
+## What remains outside the kit
+
+- provider contract, DPA, region, retention, disks, logs, staff access, and deletion process;
+- network egress from agent tools, plugins, browsers, shells, Git, package managers, and MCP servers;
+- security and behaviour of Pi extensions, OpenCode plugins, model code, container images, and dependencies;
+- model quality, availability, cost, capacity, and availability of a rented GPU;
+- workload-specific permission, privacy, source-code, and tool-execution decisions.
+
+A private route does not automatically make a deployment legally sovereign or GDPR compliant. Report a vulnerability privately as described in [SECURITY.md](../SECURITY.md).

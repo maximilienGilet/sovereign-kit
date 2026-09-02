@@ -1,27 +1,20 @@
 # Quick start
 
-This is the shortest path from a prepared GPU host to a local Pi or OpenCode session. It assumes you have already read [Security](security.md) and have an approved Qwen/SGLang host.
+This is the shortest supported path from a prepared GPU host to a local Pi or OpenCode session on macOS. It uses the shared **keyless** Studio route. Read [Security](security.md) first, and complete [Server setup](server.md) before starting on the Mac.
 
-## 1. Check prerequisites on the Mac
+## 1. Check Mac prerequisites
 
-You need:
-
-- macOS with the standard `ssh` client;
-- [Pi](https://github.com/badlogic/pi-mono) installed and available as `pi`;
-- Git;
-- Node.js and npm only if you want the installer to install OpenCode.
+You need macOS, the standard `ssh` client, Git, and [Pi](https://github.com/badlogic/pi-mono) available as `pi`. Node.js/npm are needed only when the installer should install OpenCode.
 
 ```bash
 pi --version
 git --version
 ssh -V
-```
-
-For OpenCode, also check:
-
-```bash
+# only when using --with-opencode
 npm --version
 ```
+
+Each command must return successfully. Install the missing dependency and open a new shell before continuing. This repository does not install Pi itself.
 
 ## 2. Clone and install
 
@@ -31,38 +24,38 @@ cd sovereign-kit
 ./install-macos.sh --with-opencode
 ```
 
-Without `--with-opencode`, the installer still writes the OpenCode configuration and wrapper. Install the pinned client yourself before using it:
+The installer prints the installed Pi profile and OpenCode configuration paths, then the wrapper commands. If it says an existing Pi profile would be overwritten, stop and decide whether `--upgrade` is appropriate; it backs up the Pi profile but not the OpenCode configuration or wrappers. See [Local setup](local-setup.md#upgrades-and-removal).
+
+Without `--with-opencode`, install the pinned OpenCode client before using its wrapper:
 
 ```bash
 npm install --global opencode-ai@1.18.25
+opencode --version
 ```
 
-If `~/.local/bin` is not on your shell path, add it once:
+The wrappers are installed in `~/.local/bin`. If the shell cannot find them, add that directory once and open a new zsh session:
 
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 exec zsh
 ```
 
-See [Local setup](local-setup.md) for the files created and upgrade behaviour.
-
 ## 3. Prepare the SSH trust files
 
-Do not accept an unknown host key at first connection. Obtain the GPU host fingerprint through a channel you trust, then create a dedicated known-hosts file containing that verified key.
+Obtain the GPU host’s SSH fingerprint through a channel you trust. Do **not** accept an unknown key at first connection as a substitute for verification. Create a dedicated known-hosts file containing the verified key and use a dedicated private identity for the tunnel.
 
-Keep the tunnel identity and known-hosts file outside the repository. Restrict their permissions:
+Keep both files outside the repository and limit their permissions:
 
 ```bash
 chmod 600 ~/.ssh/qwen-sovereign_ed25519 ~/.ssh/qwen-sovereign_known_hosts
-```
-
-The exact host entry depends on the hostname and SSH port. Verify it before use:
-
-```bash
 ssh-keygen -lf ~/.ssh/qwen-sovereign_known_hosts
 ```
 
+The final command prints the fingerprints saved in that file. Compare them with the independently verified value. A mismatch or a changed host key is a stop condition, not a prompt to disable strict checking.
+
 ## 4. Open the tunnel
+
+Use the deployment-specific SSH host, port, and unprivileged user:
 
 ```bash
 sovkit-tunnel <ssh-host> <ssh-port> <tunnel-user> \
@@ -70,28 +63,24 @@ sovkit-tunnel <ssh-host> <ssh-port> <tunnel-user> \
   ~/.ssh/qwen-sovereign_known_hosts
 ```
 
-Leave this terminal open. The command fails instead of falling back if the identity, known-hosts file, host key, or forward cannot be established.
+Leave this terminal open. The wrapper binds only `127.0.0.1:30000` on the Mac and fails rather than falling back when the identity, known-hosts file, host key, or port forward is invalid.
 
-## 5. Check the local endpoint
+## 5. Verify the local route
 
-In another terminal:
+In a second terminal, check the forwarded endpoint:
 
 ```bash
 curl --fail --silent --show-error http://127.0.0.1:30000/v1/models
+sovkit doctor
 ```
 
-If the server requires authentication, use a deployment-specific secret for an endpoint check and for OpenCode:
+`curl` must return JSON with a `data` list and exit `0`. `sovkit doctor` must report no failures. It may warn about an intentional path override or a missing OpenCode executable; resolve or explicitly inspect every warning before client work.
 
-```bash
-export QWEN_LOCAL_API_KEY='<deployment secret>'
-curl --fail --silent --show-error \
-  -H "Authorization: Bearer $QWEN_LOCAL_API_KEY" \
-  http://127.0.0.1:30000/v1/models
-```
+Do **not** set `QWEN_LOCAL_API_KEY` for the shared Studio profile: its SGLang route is keyless and the shipped Pi profile uses the non-secret compatibility identifier `local-qwen-tunnel`. If `/v1/models` returns `401` or `403`, stop: the server does not match the shared V1 route. Do not use Pi against it until a compatible authenticated profile has been built and live-tested.
 
-The shipped Pi profile is keyless and does not consume `QWEN_LOCAL_API_KEY`. Do not continue with Pi against an authenticated server until you have built and tested a compatible Pi profile. See [Local setup](local-setup.md#authentication-caveat).
+## 6. Start a harness and smoke-test it
 
-## 6. Start a harness
+From a disposable or approved non-sensitive repository, launch one client:
 
 ```bash
 pi-sovereign
@@ -99,4 +88,14 @@ pi-sovereign
 opencode-sovereign
 ```
 
-In Pi, run `/subagents-models`. The parent and every worker must show `sovereign-qwen/qwen3.8-27b-nvfp4`. If they do not, stop and read [Operations](operations.md).
+In Pi, run `/subagents-models`. The parent and every worker must show:
+
+```text
+sovereign-qwen/qwen3.8-27b-nvfp4
+```
+
+In OpenCode, confirm the selected model is the same value. Start with a non-sensitive prompt, such as asking the client to explain a small disposable local file. If another provider/model appears, or the request fails, stop and follow [Operations](operations.md) and [Development harness](development-harness.md). Do not work around a failure by launching bare `pi`/`opencode`, opening a public port, or adding a public-provider fallback.
+
+## 7. End the session
+
+Exit Pi or OpenCode, stop the tunnel with `Ctrl-C`, then stop and destroy the remote GPU host according to the deployment procedure. Closing the Mac client or the tunnel alone does not stop provider billing.

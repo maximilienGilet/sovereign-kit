@@ -1,39 +1,25 @@
 # Contributing to Sovereign Kit
 
-Thanks for considering a contribution.
+Sovereign Kit is one small reference route: Pi and OpenCode on a Mac reach one private Qwen/SGLang server through SSH loopback. Contributions should make that route clearer, safer to operate, or more reproducible.
 
-Sovereign Kit is an early, provider-neutral setup kit for a private AI inference route. The V1 harnesses are coding agents, but the core route can serve approved OpenAI-compatible clients. Contributions should improve reproducibility, clarity, or bounded technical controls — not expand the project into a generic compliance platform.
+Do not turn it into a general multi-model router, compliance product, dashboard, GPU marketplace integration, or agent platform without a separate design and evidence.
 
-## Before opening an issue or pull request
+## Rules
 
-- Read the [security boundary](docs/security.md) and the [security policy](SECURITY.md).
-- Never include credentials, tokens, private keys, SSH host keys, production endpoints, client names, repository content, or private benchmark logs.
-- Do not claim legal sovereignty, GDPR compliance, DPA coverage, security certification, or provider contractual guarantees without independently verifiable and appropriately scoped evidence.
-- Keep provider-specific code behind clear adapters; the project core must not become tied to one GPU marketplace, model, or agent harness.
+- Never include credentials, private keys, host keys, active endpoints, client material, private benchmark logs, or production identifiers.
+- Do not claim legal sovereignty, GDPR compliance, security certification, DPA coverage, provider guarantees, performance, or cost without appropriately scoped evidence.
+- Keep the server loopback-bound and the client route fail-closed. Do not add a public-provider fallback.
+- Keep the shared Pi + OpenCode route keyless unless a Pi-compatible authenticated route has been implemented and live-tested.
 
-## Local checks
+## Checks
 
-Run the checks relevant to your change before opening a pull request:
+Run before opening a pull request:
 
 ```bash
-bash -n install-macos.sh bin/*
-python3 scripts/check-profiles.py
-python3 tests/test_render_profile.py
+bash -n install-macos.sh bin/* server/run-sglang.sh
 python3 tests/test_sovkit_doctor.py
 python3 scripts/check-secrets.py
+git diff --check
 ```
 
-If you modify the installer or wrappers, run the isolated installer test described in the existing documentation and report exactly what was exercised. Do not report a real inference success unless the request completed through an approved private endpoint.
-
-## Pull-request guidance
-
-Keep pull requests small and explain:
-
-1. the user or operator problem being addressed;
-2. the security boundary affected, including residual risk;
-3. how the change was validated;
-4. any provider/model/harness assumption introduced.
-
-## Roadmap discipline
-
-The repository currently contains a validated Qwen/SGLang reference path and local Pi/OpenCode harness setup. Future provider adapters, lifecycle automation, dashboards, and a `sovkit` CLI must remain clearly labelled as planned until implemented and tested.
+Describe the operator problem, the route/security impact, and what you actually validated. Do not describe a real inference path as tested unless it completed against an approved private endpoint.
