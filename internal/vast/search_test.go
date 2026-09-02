@@ -16,7 +16,7 @@ func TestSearchOffersReturnsOnlyEligibleOffers(t *testing.T) {
 		}
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Fatal("missing bearer token")
-	}
+		}
 		body, _ := io.ReadAll(r.Body)
 		for _, expected := range []string{`"limit":5`, `"type":"on-demand"`, `"verified":{"eq":true}`, `"gpu_ram":{"gte":96}`} {
 			if !strings.Contains(string(body), expected) {

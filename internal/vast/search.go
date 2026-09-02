@@ -39,12 +39,12 @@ func (client *Client) SearchOffers(ctx context.Context, request SearchRequest) (
 		return nil, fmt.Errorf("Vast API token is required")
 	}
 	payload := map[string]any{
-		"limit": request.Limit,
-		"type":  "on-demand",
+		"limit":    request.Limit,
+		"type":     "on-demand",
 		"verified": map[string]bool{"eq": true},
 		"rentable": map[string]bool{"eq": true},
-		"rented": map[string]bool{"eq": false},
-		"gpu_ram": map[string]int{"gte": request.MinimumVRAMGB},
+		"rented":   map[string]bool{"eq": false},
+		"gpu_ram":  map[string]int{"gte": request.MinimumVRAMGB},
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

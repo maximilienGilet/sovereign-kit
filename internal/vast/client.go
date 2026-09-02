@@ -16,6 +16,47 @@ type Client struct {
 	http    *http.Client
 }
 
+type Instance struct {
+	ID      int    `json:"id"`
+	Status  string `json:"actual_status"`
+	SSHHost string `json:"ssh_host"`
+	SSHPort int    `json:"ssh_port"`
+}
+
+type instanceResponse struct {
+	Instance Instance `json:"instances"`
+}
+
+func (client *Client) GetInstance(ctx context.Context, instanceID int) (Instance, error) {
+	if strings.TrimSpace(client.token) == "" {
+		return Instance{}, fmt.Errorf("Vast API token is required")
+	}
+	if instanceID <= 0 {
+		return Instance{}, fmt.Errorf("Vast instance ID must be positive")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v0/instances/%d", client.baseURL, instanceID), nil)
+	if err != nil {
+		return Instance{}, err
+	}
+	request.Header.Set("Authorization", "Bearer "+client.token)
+	response, err := client.http.Do(request)
+	if err != nil {
+		return Instance{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return Instance{}, fmt.Errorf("Vast show instance returned HTTP %d", response.StatusCode)
+	}
+	var result instanceResponse
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return Instance{}, fmt.Errorf("decode Vast instance response: %w", err)
+	}
+	if result.Instance.ID != instanceID {
+		return Instance{}, fmt.Errorf("Vast response did not return instance %d", instanceID)
+	}
+	return result.Instance, nil
+}
+
 type CreateRequest struct {
 	Image     string `json:"image"`
 	DiskGB    int    `json:"disk"`
