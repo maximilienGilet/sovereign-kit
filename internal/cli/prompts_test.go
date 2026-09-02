@@ -66,3 +66,24 @@ func TestHuhPrompterImplementsSetupInterfaces(t *testing.T) {
 	var _ setup.Operator = (*HuhPrompter)(nil)
 	var _ = huh.ErrUserAborted
 }
+func TestManualRouteFieldsHaveOnePrefilledSSHUser(t *testing.T) {
+	route := ManualRoute{}
+	portText := "22"
+	fields := manualRouteFields(&route, &portText, "alice")
+	if len(fields) != 5 {
+		t.Fatalf("expected five manual route inputs, got %d", len(fields))
+	}
+	if route.User != "alice" {
+		t.Fatalf("expected default SSH user, got %q", route.User)
+	}
+	if got := fields[2].GetValue(); got != "alice" {
+		t.Fatalf("expected prefilled SSH user field, got %#v", got)
+	}
+	count := 0
+	for _, field := range fields {
+		count += strings.Count(field.View(), "SSH user")
+	}
+	if count != 1 {
+		t.Fatalf("expected one SSH user prompt, got %d", count)
+	}
+}

@@ -87,15 +87,7 @@ func (p *HuhPrompter) SelectProvider(ctx context.Context) (string, error) {
 func (p *HuhPrompter) ManualRoute(ctx context.Context, defaultUser string) (ManualRoute, error) {
 	var route ManualRoute
 	portText := "22"
-	fields := []huh.Field{
-		huh.NewInput().Title("GPU host").Value(&route.Host).Validate(required("GPU host")),
-		huh.NewInput().Title("SSH port").Value(&portText).Validate(required("SSH port")),
-		huh.NewInput().Title("SSH user").Value(&route.User).Validate(required("SSH user")),
-		huh.NewInput().Title("SSH identity file").Value(&route.IdentityFile).Validate(required("SSH identity file")),
-		huh.NewInput().Title("Verified known-hosts file").Value(&route.KnownHostsFile).Validate(required("verified known-hosts file")),
-		huh.NewInput().Title("SSH user").Value(&route.User),
-	}
-	route.User = defaultUser
+	fields := manualRouteFields(&route, &portText, defaultUser)
 	if err := p.runGroup(ctx, fields...); err != nil {
 		return ManualRoute{}, err
 	}
@@ -105,6 +97,17 @@ func (p *HuhPrompter) ManualRoute(ctx context.Context, defaultUser string) (Manu
 	}
 	route.Port = port
 	return route, nil
+}
+
+func manualRouteFields(route *ManualRoute, portText *string, defaultUser string) []huh.Field {
+	route.User = defaultUser
+	return []huh.Field{
+		huh.NewInput().Title("GPU host").Value(&route.Host).Validate(required("GPU host")),
+		huh.NewInput().Title("SSH port").Value(portText).Validate(required("SSH port")),
+		huh.NewInput().Title("SSH user").Value(&route.User).Validate(required("SSH user")),
+		huh.NewInput().Title("SSH identity file").Value(&route.IdentityFile).Validate(required("SSH identity file")),
+		huh.NewInput().Title("Verified known-hosts file").Value(&route.KnownHostsFile).Validate(required("verified known-hosts file")),
+	}
 }
 
 func (p *HuhPrompter) VastIdentity(ctx context.Context, defaultValue string) (string, error) {
