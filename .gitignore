@@ -15,6 +15,7 @@
 # Sovereign Kit local configuration and runtime state
 config.toml
 .sovkit/
+.worktrees/
 
 # Pi runtime artifacts
 .pi/agent/sessions/
