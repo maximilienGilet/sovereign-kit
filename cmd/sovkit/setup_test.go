@@ -2,13 +2,32 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/maximilienGilet/sovereign-kit/internal/cli"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
 )
+
+type manualSetupPrompter struct {
+	route cli.ManualRoute
+}
+
+func (p manualSetupPrompter) SelectProvider(context.Context) (string, error) {
+	return "manual", nil
+}
+
+func (p manualSetupPrompter) ManualRoute(context.Context, string) (cli.ManualRoute, error) {
+	return p.route, nil
+}
+
+func (manualSetupPrompter) VastIdentity(context.Context, string) (string, error) {
+	return "", nil
+}
 
 func TestRunWithSetupWritesPrivateRouteConfig(t *testing.T) {
 	dir := t.TempDir()
@@ -20,9 +39,22 @@ func TestRunWithSetupWritesPrivateRouteConfig(t *testing.T) {
 		}
 	}
 	configPath := filepath.Join(dir, "config.toml")
-	input := strings.NewReader("gpu.example\n\nubuntu\n" + identity + "\n" + knownHosts + "\n")
+	input := strings.NewReader("")
 	var output bytes.Buffer
-	if err := runWith([]string{"setup"}, input, &output, configPath, "ubuntu"); err != nil {
+	app := application{
+		setup: func(actualInput io.Reader, actualOutput io.Writer, path, user string) error {
+			return cli.Setup(context.Background(), actualInput, actualOutput, path, user, cli.SetupDependencies{
+				Prompter: manualSetupPrompter{route: cli.ManualRoute{
+					Host:           "gpu.example",
+					Port:           22,
+					User:           "ubuntu",
+					IdentityFile:   identity,
+					KnownHostsFile: knownHosts,
+				}},
+			})
+		},
+	}
+	if err := runWith([]string{"setup"}, input, &output, configPath, "ubuntu", app); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(configPath)

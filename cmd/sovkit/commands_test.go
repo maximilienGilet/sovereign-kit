@@ -11,7 +11,7 @@ func TestRunHelpListsTheOperationalRouteCommands(t *testing.T) {
 	if err := run([]string{"help"}, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"setup", "dashboard", "doctor", "tunnel"} {
+	for _, command := range []string{"setup", "start", "dashboard", "doctor", "tunnel"} {
 		if !strings.Contains(output.String(), command) {
 			t.Fatalf("help does not describe %q: %s", command, output.String())
 		}

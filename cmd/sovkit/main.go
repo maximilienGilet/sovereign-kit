@@ -12,8 +12,18 @@ import (
 	"github.com/maximilienGilet/sovereign-kit/internal/catalogui"
 	"github.com/maximilienGilet/sovereign-kit/internal/cli"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
+	"github.com/maximilienGilet/sovereign-kit/recipes"
 	"github.com/maximilienGilet/sovereign-kit/internal/route"
+	"github.com/maximilienGilet/sovereign-kit/internal/setup"
+	"github.com/maximilienGilet/sovereign-kit/internal/vast"
 )
+
+const vastBaseURL = "https://console.vast.ai"
+
+type application struct {
+	setup func(io.Reader, io.Writer, string, string) error
+	start func(io.Writer, string) error
+}
 
 func main() {
 	path, err := defaultConfigPath()
@@ -34,12 +44,22 @@ func run(args []string, output io.Writer) error {
 	return runWith(args, os.Stdin, output, path, os.Getenv("USER"))
 }
 
-func runWith(args []string, input io.Reader, output io.Writer, configPath, defaultUser string) error {
+func runWith(args []string, input io.Reader, output io.Writer, configPath, defaultUser string, apps ...application) error {
+	app := productionApplication()
+	if len(apps) > 0 {
+		if apps[0].setup != nil {
+			app.setup = apps[0].setup
+		}
+		if apps[0].start != nil {
+			app.start = apps[0].start
+		}
+	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		_, err := fmt.Fprintln(output, `Usage: sovkit <command>
 
 Commands:
-  setup       Save a verified private SSH route configuration
+  setup       Provision a verified private SSH route
+  start       Start the private tunnel and dashboard
   catalog     Browse recipes and inspect their requirements
   dashboard   Open the recipe dashboard
   tunnel      Start the private SSH loopback tunnel
@@ -48,7 +68,9 @@ Commands:
 	}
 	switch args[0] {
 	case "setup":
-		return cli.Setup(input, output, configPath, defaultUser)
+		return app.setup(input, output, configPath, defaultUser)
+	case "start":
+		return app.start(output, configPath)
 	case "catalog", "dashboard":
 		_, err := tea.NewProgram(catalogui.New(catalogui.DefaultEntries()), tea.WithOutput(output)).Run()
 		return err
@@ -78,6 +100,53 @@ Commands:
 		return err
 	default:
 		return fmt.Errorf("unknown command %q (try: sovkit help)", args[0])
+	}
+}
+
+func productionApplication() application {
+	return application{
+		setup: func(input io.Reader, output io.Writer, configPath, defaultUser string) error {
+			recipe, err := recipes.QwenStudio()
+			if err != nil {
+				return fmt.Errorf("load Qwen Studio recipe: %w", err)
+			}
+			return cli.Setup(context.Background(), input, output, configPath, defaultUser, cli.SetupDependencies{
+				Getenv:  os.Getenv,
+				HomeDir: os.UserHomeDir,
+				RunVast: func(ctx context.Context, token, identity string, operator setup.Operator) (setup.Result, error) {
+					return setup.RunVast(ctx, token, recipe, setup.Options{
+						ConfigPath:    configPath,
+						KnownHostsDir: filepath.Join(filepath.Dir(configPath), "known_hosts"),
+						OfferLimit:    5,
+						PollInterval:  5 * time.Second,
+						PollTimeout:   10 * time.Minute,
+					}, setup.Dependencies{
+						NewAPI: func(token string) setup.VastAPI {
+							return vast.NewClient(vastBaseURL, token)
+						},
+						Operator:         operator,
+						HostKeyScanner:   setup.SystemHostKeyScanner{Runner: setup.ExecRunner{}},
+						TrustStore:       setup.FileTrustStore{},
+						ServerLauncher:   setup.StrictSSHLauncher{Runner: setup.ExecRunner{}},
+						Clock:            setup.RealClock{},
+						SaveConfig:       config.Save,
+						ValidateIdentity: setup.ValidateIdentityFile,
+					})
+				},
+			})
+		},
+		start: func(output io.Writer, configPath string) error {
+			return cli.Start(context.Background(), output, configPath, cli.StartDependencies{
+				Healthcheck:  route.Healthcheck,
+				RunDashboard: func(output io.Writer) error {
+					_, err := tea.NewProgram(catalogui.New(catalogui.DefaultEntries()), tea.WithOutput(output)).Run()
+					return err
+				},
+				Clock:        setup.RealClock{},
+				PollInterval: 5 * time.Second,
+				PollTimeout:  30 * time.Minute,
+			})
+		},
 	}
 }
 

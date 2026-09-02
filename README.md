@@ -49,6 +49,20 @@ You need:
 
 Keep private keys, known-hosts files, active hostnames, client material, and private logs out of this repository.
 
+## Primary journey
+
+On the Mac, export the Vast API key for setup and then use the foreground dashboard:
+
+```bash
+export VAST_API_KEY='***'
+sovkit setup
+sovkit start
+```
+
+`sovkit setup` offers Vast and Manual SSH. For Vast, the API key is used only for the setup request and is never stored. `sovkit start` owns the strict SSH tunnel only while its dashboard is open; quitting the dashboard does not stop the Vast instance or its billing. Stop or destroy the instance explicitly and confirm billing has ended.
+
+For either provider, verify the host fingerprint through an independent channel before trusting it. The route remains strict: do not disable host-key checking, expose a public endpoint, or enable a provider fallback.
+
 ## 1. Start the GPU host
 
 On the GPU host:
