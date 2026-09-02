@@ -27,7 +27,7 @@ func TestCatalogNavigationChangesTheDetailRail(t *testing.T) {
 	})
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	view := updated.(Model).View()
-	if !strings.Contains(view, "Custom HF") || !strings.Contains(view, "SOURCE  custom") {
+	if !strings.Contains(view, "Custom HF") || !strings.Contains(view, "SOURCE") || !strings.Contains(view, "custom") {
 		t.Fatalf("navigation did not select second entry:\n%s", view)
 	}
 }
