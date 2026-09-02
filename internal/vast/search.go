@@ -41,6 +41,7 @@ func (offer offerResponse) normalized() Offer {
 		Reliability: offer.Reliability,
 	}
 }
+
 // SearchOffers returns on-demand, verified, rentable offers with enough VRAM
 // for the selected built-in profile. It never creates an instance.
 type searchResponse struct {

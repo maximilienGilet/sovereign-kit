@@ -12,11 +12,11 @@ import (
 	"github.com/maximilienGilet/sovereign-kit/internal/catalogui"
 	"github.com/maximilienGilet/sovereign-kit/internal/cli"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
-	"github.com/maximilienGilet/sovereign-kit/recipes"
 	"github.com/maximilienGilet/sovereign-kit/internal/recipe"
 	"github.com/maximilienGilet/sovereign-kit/internal/route"
 	"github.com/maximilienGilet/sovereign-kit/internal/setup"
 	"github.com/maximilienGilet/sovereign-kit/internal/vast"
+	"github.com/maximilienGilet/sovereign-kit/recipes"
 )
 
 const vastBaseURL = "https://console.vast.ai"
@@ -164,7 +164,7 @@ func productionApplicationWith(deps productionDependencies) application {
 		},
 		start: func(output io.Writer, configPath string) error {
 			return cli.Start(context.Background(), output, configPath, cli.StartDependencies{
-				Healthcheck:  route.Healthcheck,
+				Healthcheck: route.Healthcheck,
 				RunDashboard: func(output io.Writer) error {
 					_, err := tea.NewProgram(catalogui.New(catalogui.DefaultEntries()), tea.WithOutput(output)).Run()
 					return err

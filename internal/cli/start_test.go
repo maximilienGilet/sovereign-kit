@@ -313,6 +313,7 @@ func TestStartAbortsBlockedHealthWhenTunnelExits(t *testing.T) {
 		t.Fatalf("stop count = %d, want 1", tunnel.stopCount)
 	}
 }
+
 type expiredStartTimer struct{}
 
 func (expiredStartTimer) C() <-chan time.Time {
@@ -351,6 +352,7 @@ func TestStartRejectsHealthResultAfterTimerExpiry(t *testing.T) {
 		t.Fatalf("stop count = %d, want 1", tunnel.stopCount)
 	}
 }
+
 type trackingStartTimer struct {
 	stopCount int
 }

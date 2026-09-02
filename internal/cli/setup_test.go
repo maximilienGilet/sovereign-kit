@@ -66,7 +66,7 @@ func TestSetupKeepsManualSecureRoute(t *testing.T) {
 	}
 	prompter := &fakeSetupPrompter{
 		provider: "manual",
-		manual: ManualRoute{Host: "gpu.example.test", Port: 2222, User: "sovkit", IdentityFile: identity, KnownHostsFile: knownHosts},
+		manual:   ManualRoute{Host: "gpu.example.test", Port: 2222, User: "sovkit", IdentityFile: identity, KnownHostsFile: knownHosts},
 	}
 	getenvCalled := false
 	deps := SetupDependencies{
@@ -134,8 +134,8 @@ func TestSetupVastDefaultsToExistingEd25519Identity(t *testing.T) {
 	var gotToken, gotIdentity string
 	deps := SetupDependencies{
 		Prompter: prompter,
-		Getenv: func(string) string { return "exact-secret-token" },
-		HomeDir: func() (string, error) { return "/home/alice", nil },
+		Getenv:   func(string) string { return "exact-secret-token" },
+		HomeDir:  func() (string, error) { return "/home/alice", nil },
 		RunVast: func(_ context.Context, token, identity string, _ setup.Operator) (setup.Result, error) {
 			gotToken, gotIdentity = token, identity
 			return setup.Result{InstanceID: 41, ConfigPath: configPath}, nil

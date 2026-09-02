@@ -35,12 +35,12 @@ func TestCustomHuggingFaceRecipeRequiresPinnedRevision(t *testing.T) {
 
 func TestValidateRejectsNegativeDiskRequirement(t *testing.T) {
 	r := Recipe{
-		Version: 1,
-		ID: "test",
-		Name: "Test",
-		Runtime: Runtime{Engine: "sglang", Image: "example/image@sha256:abc"},
-		Model: Model{Repository: "org/model", Revision: "0123456789012345678901234567890123456789"},
-		Serve: Serve{ContextWindow: 1, MaxOutputTokens: 1, MaxRunningRequests: 1},
+		Version:      1,
+		ID:           "test",
+		Name:         "Test",
+		Runtime:      Runtime{Engine: "sglang", Image: "example/image@sha256:abc"},
+		Model:        Model{Repository: "org/model", Revision: "0123456789012345678901234567890123456789"},
+		Serve:        Serve{ContextWindow: 1, MaxOutputTokens: 1, MaxRunningRequests: 1},
 		Requirements: Requirements{MinimumDiskGB: -1},
 	}
 	if err := r.Validate(); err == nil {

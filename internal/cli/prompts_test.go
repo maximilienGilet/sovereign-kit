@@ -3,14 +3,14 @@ package cli
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"strconv"
-	"testing"
-	"strings"
 	"github.com/charmbracelet/huh"
 	"github.com/maximilienGilet/sovereign-kit/internal/setup"
 	"github.com/maximilienGilet/sovereign-kit/internal/vast"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
 )
 
 func TestProviderOptionsUseStableLabels(t *testing.T) {
@@ -30,7 +30,7 @@ func TestOfferLabelsShowCostCapacityAndReliability(t *testing.T) {
 	view := setup.OfferView{
 		Offer:      vast.Offer{ID: 7, GPUName: "RTX 4090", GPUVRAMGB: 47.5, HourlyUSD: 1.234, Location: "US", Reliability: 0.987},
 		MonthlyUSD: 900.82,
-		AnnualUSD: 10810.44,
+		AnnualUSD:  10810.44,
 	}
 	label := offerLabel(view)
 	for _, want := range []string{"RTX 4090", "47.5 GB VRAM", "$1.23/h", "Monthly $900.82", "Annual $10810.44", "US", "98.7%"} {

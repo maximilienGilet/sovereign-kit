@@ -90,7 +90,6 @@ func TestExecRunnerFailuresTruncateStderr(t *testing.T) {
 	}
 }
 
-
 func TestSystemHostKeyScannerScansAndFingerprints(t *testing.T) {
 	runner := &fakeCommandRunner{
 		outputs: map[string][]byte{

@@ -192,7 +192,6 @@ func stopStartTimer(timer startTimer) {
 	}
 }
 
-
 func tunnelExitError(err error) error {
 	if err == nil {
 		return errors.New("tunnel exited unexpectedly")

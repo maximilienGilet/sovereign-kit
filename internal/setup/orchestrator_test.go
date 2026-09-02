@@ -56,14 +56,14 @@ func (f *fakeVastAPI) GetInstance(_ context.Context, _ int) (vast.Instance, erro
 }
 
 type fakeOperator struct {
-	selected     vast.Offer
-	confirmCost  bool
-	confirmErr   error
-	confirmKeys  bool
+	selected      vast.Offer
+	confirmCost   bool
+	confirmErr    error
+	confirmKeys   bool
 	confirmKeyErr error
-	views        []OfferView
-	fingerprints []string
-	events       *[]string
+	views         []OfferView
+	fingerprints  []string
+	events        *[]string
 }
 
 func (f *fakeOperator) SelectOffer(_ context.Context, views []OfferView) (vast.Offer, error) {
@@ -106,11 +106,11 @@ func (f *fakeScanner) Scan(_ context.Context, host string, port int) (HostKeys, 
 }
 
 type fakeTrustStore struct {
-	calls int
-	path  string
-	raw   []byte
+	calls  int
+	path   string
+	raw    []byte
 	events *[]string
-	err   error
+	err    error
 }
 
 func (f *fakeTrustStore) Save(path string, raw []byte) error {
@@ -163,13 +163,13 @@ func (f *fakeClock) Sleep(ctx context.Context, duration time.Duration) error {
 
 func validRecipe() recipe.Recipe {
 	return recipe.Recipe{
-		Version: 1,
-		ID:      "qwen-studio",
-		Name:    "Qwen Studio",
-		Kind:    "text-generation",
-		Runtime: recipe.Runtime{Engine: "sglang", Image: "example/sglang@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		Model: recipe.Model{Repository: "Qwen/Qwen", Revision: strings.Repeat("a", 40)},
-		Serve: recipe.Serve{ContextWindow: 128, MaxOutputTokens: 32, MaxRunningRequests: 1},
+		Version:      1,
+		ID:           "qwen-studio",
+		Name:         "Qwen Studio",
+		Kind:         "text-generation",
+		Runtime:      recipe.Runtime{Engine: "sglang", Image: "example/sglang@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		Model:        recipe.Model{Repository: "Qwen/Qwen", Revision: strings.Repeat("a", 40)},
+		Serve:        recipe.Serve{ContextWindow: 128, MaxOutputTokens: 32, MaxRunningRequests: 1},
 		Requirements: recipe.Requirements{MinimumVRAMGB: 96, MinimumDiskGB: 120},
 	}
 }
@@ -180,12 +180,12 @@ func testOptions() Options {
 
 func baseDependencies(api *fakeVastAPI, operator *fakeOperator, scanner *fakeScanner, trust *fakeTrustStore, launcher *fakeLauncher, clock *fakeClock, events *[]string) Dependencies {
 	return Dependencies{
-		NewAPI: func(string) VastAPI { return api },
-		Operator: operator,
+		NewAPI:         func(string) VastAPI { return api },
+		Operator:       operator,
 		HostKeyScanner: scanner,
-		TrustStore: trust,
+		TrustStore:     trust,
 		ServerLauncher: launcher,
-		Clock: clock,
+		Clock:          clock,
 		SaveConfig: func(_ string, _ config.Config) error {
 			if events != nil {
 				*events = append(*events, "save-config")
@@ -306,7 +306,6 @@ func TestRunVastPollsUntilRunningSSHDetailsExist(t *testing.T) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
 }
-
 
 func TestRunVastStopsOnTerminalInstanceStatus(t *testing.T) {
 	for _, status := range []string{"exited", "unknown", "offline"} {
