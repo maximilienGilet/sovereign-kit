@@ -12,6 +12,11 @@ import (
 
 const StudioProfile = "qwen-studio"
 
+// Path returns the standard per-user location for the local route configuration.
+func Path(configHome string) string {
+	return filepath.Join(configHome, "sovereign-kit", "config.toml")
+}
+
 type Config struct {
 	Version  int      `toml:"version"`
 	Profile  string   `toml:"profile"`
@@ -43,8 +48,8 @@ type SSH struct {
 // Studio returns the only V1 route: Qwen through an SSH loopback forward.
 func Studio(host string, port int, user, identityFile, knownHostsFile string) Config {
 	return Config{
-		Version: 1,
-		Profile: StudioProfile,
+		Version:  1,
+		Profile:  StudioProfile,
 		Provider: Provider{Kind: "manual"},
 		Route: Route{
 			LocalHost: "127.0.0.1", LocalPort: 30000,
