@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -26,11 +27,18 @@ type Detail struct {
 	Notes      string
 }
 
+type entryItem struct{ Entry }
+
+func (item entryItem) FilterValue() string { return item.Name + " " + item.Kind + " " + item.Status }
+func (item entryItem) Title() string       { return item.Name + "  " + item.Status }
+func (item entryItem) Description() string {
+	return compact(item.Kind) + " · " + item.VRAM + " VRAM · " + item.Context
+}
+
 type Model struct {
-	entries []Entry
-	cursor  int
-	width   int
-	height  int
+	list   list.Model
+	width  int
+	height int
 }
 
 var (
@@ -41,64 +49,65 @@ var (
 	accent     = lipgloss.NewStyle().Foreground(cyan).Bold(true)
 	label      = lipgloss.NewStyle().Foreground(muted)
 	title      = lipgloss.NewStyle().Foreground(ink).Bold(true)
-	selected   = lipgloss.NewStyle().Foreground(ink).Background(lipgloss.Color("#17394E"))
 	panel      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(line).Padding(1, 2)
 	metricName = lipgloss.NewStyle().Foreground(muted)
 )
 
-func New(entries []Entry) Model { return Model{entries: entries, width: 150, height: 42} }
+func New(entries []Entry) Model {
+	items := make([]list.Item, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, entryItem{entry})
+	}
+	delegate := list.NewDefaultDelegate()
+	delegate.SetHeight(3)
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(cyan).BorderLeft(true).BorderStyle(lipgloss.ThickBorder()).BorderForeground(cyan).PaddingLeft(1).Bold(true)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(ink).BorderLeft(true).BorderStyle(lipgloss.ThickBorder()).BorderForeground(cyan).PaddingLeft(1)
+	delegate.Styles.NormalTitle = title
+	delegate.Styles.NormalDesc = label
+	catalog := list.New(items, delegate, 38, 24)
+	catalog.Title = ""
+	catalog.SetShowTitle(false)
+	catalog.SetShowStatusBar(false)
+	catalog.SetShowPagination(false)
+	catalog.SetShowHelp(false)
+	catalog.Styles.FilterPrompt = accent
+	catalog.Styles.FilterCursor = accent
+	return Model{list: catalog, width: 150, height: 42}
+}
 
 func (model Model) Init() tea.Cmd { return nil }
 
 func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	switch value := message.(type) {
-	case tea.WindowSizeMsg:
-		model.width, model.height = value.Width, value.Height
-	case tea.KeyMsg:
-		if len(model.entries) == 0 {
-			return model, nil
-		}
-		switch value.Type {
-		case tea.KeyDown, tea.KeyCtrlN:
-			model.cursor = min(model.cursor+1, len(model.entries)-1)
-		case tea.KeyUp, tea.KeyCtrlP:
-			model.cursor = max(model.cursor-1, 0)
-		}
+	if size, ok := message.(tea.WindowSizeMsg); ok {
+		model.width, model.height = size.Width, size.Height
+		model.resizeList()
 	}
-	return model, nil
+	var command tea.Cmd
+	model.list, command = model.list.Update(message)
+	return model, command
 }
 
 func (model Model) View() string {
-	if len(model.entries) == 0 {
+	selected, ok := model.list.SelectedItem().(entryItem)
+	if !ok {
 		return title.Render("SOVEREIGN KIT") + "  " + label.Render("No launchable recipes") + "\n"
 	}
-	entry := model.entries[model.cursor]
 	header := accent.Render("SOVEREIGN KIT") + label.Render("  /  CATALOG") +
-		"\n" + label.Render("Choose a private model route.  ↑↓ browse  ·  Enter inspect  ·  Space hardware  ·  L launch")
-
+		"\n" + label.Render("↑↓ browse  ·  / filter  ·  Enter inspect  ·  Space hardware  ·  L launch")
 	leftWidth := clamp(model.width*32/100, 36, 48)
 	rightWidth := max(52, model.width-leftWidth-3)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, recipeList(model.entries, model.cursor, leftWidth), " ", detail(entry, rightWidth))
+	body := lipgloss.JoinHorizontal(lipgloss.Top, model.recipeList(leftWidth), " ", detail(selected.Entry, rightWidth))
 	return header + "\n\n" + body + "\n"
 }
 
-func recipeList(entries []Entry, cursor, width int) string {
-	lines := []string{accent.Render("RECIPES"), label.Render("Launchable routes and discovery flows"), ""}
-	for index, entry := range entries {
-		marker := "  "
-		if index == cursor {
-			marker = "› "
-		}
-		name := marker + entry.Name
-		subtitle := "  " + compact(entry.Kind) + " · " + entry.VRAM + " VRAM · " + entry.Context
-		statusLine := "  " + entry.Status
-		if index == cursor {
-			lines = append(lines, selected.Width(width-6).Render(name), selected.Width(width-6).Render(subtitle), selected.Width(width-6).Render(statusLine), "")
-		} else {
-			lines = append(lines, title.Render(name), label.Render(subtitle), label.Render(statusLine), "")
-		}
-	}
-	return panel.Width(width - 6).Height(max(18, len(lines)+2)).Render(strings.Join(lines, "\n"))
+func (model *Model) resizeList() {
+	leftWidth := clamp(model.width*32/100, 36, 48)
+	model.list.SetSize(leftWidth-6, max(12, model.height-8))
+}
+
+func (model Model) recipeList(width int) string {
+	content := accent.Render("RECIPES") + "\n" + label.Render("Launchable routes and discovery flows") + "\n\n" + model.list.View()
+	return panel.Width(width - 6).Render(content)
 }
 
 func detail(entry Entry, width int) string {
@@ -136,22 +145,14 @@ func detail(entry Entry, width int) string {
 func metric(name, value string) string {
 	return fmt.Sprintf("%-13s %s", metricName.Render(name), value)
 }
-
-func compact(value string) string {
-	return strings.ReplaceAll(value, "-generation", " gen")
-}
-
-func clamp(value, minimum, maximum int) int {
-	return min(max(value, minimum), maximum)
-}
-
+func compact(value string) string           { return strings.ReplaceAll(value, "-generation", " gen") }
+func clamp(value, minimum, maximum int) int { return min(max(value, minimum), maximum) }
 func min(left, right int) int {
 	if left < right {
 		return left
 	}
 	return right
 }
-
 func max(left, right int) int {
 	if left > right {
 		return left
