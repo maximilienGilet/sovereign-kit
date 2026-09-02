@@ -22,12 +22,31 @@ type Offer struct {
 	Reliability float64 `json:"reliability"`
 }
 
+type offerResponse struct {
+	ID          int     `json:"id"`
+	GPUName     string  `json:"gpu_name"`
+	GPURAMMB    float64 `json:"gpu_ram"`
+	HourlyUSD   float64 `json:"dph_total"`
+	Location    string  `json:"geolocation"`
+	Reliability float64 `json:"reliability"`
+}
+
+func (offer offerResponse) normalized() Offer {
+	return Offer{
+		ID:          offer.ID,
+		GPUName:     offer.GPUName,
+		GPUVRAMGB:   offer.GPURAMMB / 1024,
+		HourlyUSD:   offer.HourlyUSD,
+		Location:    offer.Location,
+		Reliability: offer.Reliability,
+	}
+}
+// SearchOffers returns on-demand, verified, rentable offers with enough VRAM
+// for the selected built-in profile. It never creates an instance.
 type searchResponse struct {
 	Offers json.RawMessage `json:"offers"`
 }
 
-// SearchOffers returns on-demand, verified, rentable offers with enough VRAM
-// for the selected built-in profile. It never creates an instance.
 func (client *Client) SearchOffers(ctx context.Context, request SearchRequest) ([]Offer, error) {
 	if request.Limit < 1 || request.Limit > 100 {
 		return nil, fmt.Errorf("offer limit must be between 1 and 100")
@@ -40,11 +59,11 @@ func (client *Client) SearchOffers(ctx context.Context, request SearchRequest) (
 	}
 	payload := map[string]any{
 		"limit":    request.Limit,
-		"type":     "on-demand",
+		"type":     "ondemand",
 		"verified": map[string]bool{"eq": true},
 		"rentable": map[string]bool{"eq": true},
 		"rented":   map[string]bool{"eq": false},
-		"gpu_ram":  map[string]int{"gte": request.MinimumVRAMGB},
+		"gpu_ram":  map[string]int{"gte": request.MinimumVRAMGB * 1024},
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -68,13 +87,17 @@ func (client *Client) SearchOffers(ctx context.Context, request SearchRequest) (
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode Vast offer response: %w", err)
 	}
-	var offers []Offer
+	var offers []offerResponse
 	if err := json.Unmarshal(result.Offers, &offers); err == nil {
-		return offers, nil
+		normalized := make([]Offer, len(offers))
+		for index, offer := range offers {
+			normalized[index] = offer.normalized()
+		}
+		return normalized, nil
 	}
-	var one Offer
+	var one offerResponse
 	if err := json.Unmarshal(result.Offers, &one); err != nil {
 		return nil, fmt.Errorf("decode Vast offers: %w", err)
 	}
-	return []Offer{one}, nil
+	return []Offer{one.normalized()}, nil
 }

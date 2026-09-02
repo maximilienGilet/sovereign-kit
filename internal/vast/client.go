@@ -58,12 +58,16 @@ func (client *Client) GetInstance(ctx context.Context, instanceID int) (Instance
 }
 
 type CreateRequest struct {
-	Image     string `json:"image"`
-	DiskGB    int    `json:"disk"`
-	Runtype   string `json:"runtype"`
-	DirectSSH bool   `json:"ssh_direct"`
-	Label     string `json:"label,omitempty"`
-	Onstart   string `json:"onstart,omitempty"`
+	Image  string
+	DiskGB int
+	Label  string
+}
+
+type createPayload struct {
+	Image   string `json:"image"`
+	DiskGB  int    `json:"disk"`
+	Runtype string `json:"runtype"`
+	Label   string `json:"label,omitempty"`
 }
 
 type createResponse struct {
@@ -75,6 +79,20 @@ func NewClient(baseURL, token string) *Client {
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), token: token, http: http.DefaultClient}
 }
 
+func isDigestImage(image string) bool {
+	digest := strings.TrimSpace(image)
+	separator := strings.LastIndex(digest, "@sha256:")
+	if separator < 1 || len(digest)-separator-8 != 64 {
+		return false
+	}
+	for _, character := range digest[separator+8:] {
+		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
 // CreateInstance accepts one selected Vast offer. It does not search, destroy, or
 // change any existing instance.
 func (client *Client) CreateInstance(ctx context.Context, offerID int, request CreateRequest) (int, error) {
@@ -84,10 +102,12 @@ func (client *Client) CreateInstance(ctx context.Context, offerID int, request C
 	if offerID <= 0 {
 		return 0, fmt.Errorf("Vast offer ID must be positive")
 	}
-	if strings.TrimSpace(request.Image) == "" || request.DiskGB <= 0 || request.Runtype != "ssh" {
-		return 0, fmt.Errorf("image, positive disk size, and SSH runtype are required")
+	if strings.TrimSpace(request.Image) == "" || request.DiskGB <= 0 || !isDigestImage(request.Image) {
+		return 0, fmt.Errorf("image digest and positive disk size are required")
 	}
-	body, err := json.Marshal(request)
+	body, err := json.Marshal(createPayload{
+		Image: request.Image, DiskGB: request.DiskGB, Runtype: "ssh_direct", Label: request.Label,
+	})
 	if err != nil {
 		return 0, err
 	}

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestCreateInstanceUsesBearerTokenAndReturnsContractID(t *testing.T) {
+func TestCreateInstanceUsesSSHDirectWireContract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/v0/asks/42" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -18,10 +18,17 @@ func TestCreateInstanceUsesBearerTokenAndReturnsContractID(t *testing.T) {
 			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
 		}
 		body, _ := io.ReadAll(r.Body)
-		for _, expected := range []string{`"image":"example/sglang:locked"`, `"disk":120`, `"runtype":"ssh"`, `"ssh_direct":true`} {
+		for _, expected := range []string{
+			`"disk":120`,
+			`"runtype":"ssh_direct"`,
+			`"label":"sovkit-qwen-studio"`,
+		} {
 			if !strings.Contains(string(body), expected) {
 				t.Fatalf("request body missing %s: %s", expected, body)
 			}
+		}
+		if strings.Contains(string(body), "onstart") {
+			t.Fatalf("create request must not start code before host trust: %s", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"success":true,"new_contract":987}`))
@@ -30,7 +37,9 @@ func TestCreateInstanceUsesBearerTokenAndReturnsContractID(t *testing.T) {
 
 	client := NewClient(server.URL, "test-token")
 	instanceID, err := client.CreateInstance(context.Background(), 42, CreateRequest{
-		Image: "example/sglang:locked", DiskGB: 120, Runtype: "ssh", DirectSSH: true,
+		Image:  "lmsysorg/sglang@sha256:e21dd539b36ea7842101393ec3fe3b0d453626cd8251e4d4db33af0cd97d7f0b",
+		DiskGB: 120,
+		Label:  "sovkit-qwen-studio",
 	})
 	if err != nil {
 		t.Fatal(err)
