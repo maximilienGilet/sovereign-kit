@@ -267,7 +267,7 @@ func ControlledSGLangCommand(r recipe.Recipe) (string, error) {
 		if i > 0 {
 			builder.WriteByte(' ')
 		}
-		if i < 2 || strings.HasPrefix(arg, "--") {
+		if i < 2 {
 			builder.WriteString(arg)
 		} else {
 			builder.WriteString(shellQuote(arg))

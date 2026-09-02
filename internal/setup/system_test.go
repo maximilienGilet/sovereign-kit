@@ -183,7 +183,7 @@ func TestStrictSSHLauncherUsesReviewedCommand(t *testing.T) {
 	joined := strings.Join(command.Args, " ")
 	for _, expected := range []string{
 		"-o", "BatchMode=yes", "IdentitiesOnly=yes", "StrictHostKeyChecking=yes", "UserKnownHostsFile=/tmp/vast-987_known_hosts",
-		"sglang serve", "--model-path 'RadixArk/Qwen3.8-27B-NVFP4'", "--revision '319f741cce68d7914884900c138a1fbb70a42f30'", "--context-length '262144'", "--max-running-requests '5'", "--host '127.0.0.1'", "--port '30000'",
+		"sglang serve", "'--model-path' 'RadixArk/Qwen3.8-27B-NVFP4'", "'--revision' '319f741cce68d7914884900c138a1fbb70a42f30'", "'--context-length' '262144'", "'--max-running-requests' '5'", "'--host' '127.0.0.1'", "'--port' '30000'",
 		"nohup", ">/workspace/sovkit-sglang.log", "2>&1", "</dev/null", "&",
 	} {
 		if !strings.Contains(joined, expected) {
@@ -206,8 +206,26 @@ func TestStrictSSHLauncherQuotesMaliciousModelRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	remote := runner.calls[0].Args[len(runner.calls[0].Args)-1]
-	if !strings.Contains(remote, "--model-path "+shellQuote(r.Model.Repository)) {
+	if !strings.Contains(remote, "'--model-path' "+shellQuote(r.Model.Repository)) {
 		t.Fatalf("malicious model was not safely quoted: %s", remote)
+	}
+}
+func TestStrictSSHLauncherQuotesOptionLikeModelRepository(t *testing.T) {
+	r, err := recipe.CustomHuggingFace("--a/b;echo pwned;#", "319f741cce68d7914884900c138a1fbb70a42f30", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeCommandRunner{errors: map[string]error{}}
+	ssh := config.SSH{Host: "gpu.example", Port: 22022, User: "root", IdentityFile: "/tmp/id", KnownHostsFile: "/tmp/known_hosts"}
+	if err := (StrictSSHLauncher{Runner: runner}).Launch(context.Background(), ssh, r); err != nil {
+		t.Fatal(err)
+	}
+	remote := runner.calls[0].Args[len(runner.calls[0].Args)-1]
+	if !strings.Contains(remote, "'--model-path' '--a/b;echo pwned;#'") {
+		t.Fatalf("option-like model was not safely quoted: %s", remote)
+	}
+	if strings.Contains(remote, "--model-path --a/b;echo pwned;#") {
+		t.Fatalf("raw option-like model segment was injected: %s", remote)
 	}
 }
 
