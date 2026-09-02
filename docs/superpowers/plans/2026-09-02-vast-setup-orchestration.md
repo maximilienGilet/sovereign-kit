@@ -564,7 +564,7 @@ for _, expected := range []string{
     "'--max-running-requests' '5'",
     "'--host' '127.0.0.1'",
     "'--port' '30000'",
-}
+} {
     if !strings.Contains(joined, expected) {
         t.Fatalf("command missing %q: %s", expected, joined)
     }
