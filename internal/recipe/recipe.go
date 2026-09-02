@@ -51,6 +51,7 @@ type Serve struct {
 
 type Requirements struct {
 	MinimumVRAMGB int `toml:"minimum_vram_gb"`
+	MinimumDiskGB int `toml:"minimum_disk_gb"`
 }
 
 func Load(path string) (Recipe, error) {
@@ -58,14 +59,18 @@ func Load(path string) (Recipe, error) {
 	if err != nil {
 		return Recipe{}, err
 	}
-	var recipe Recipe
-	if err := toml.Unmarshal(contents, &recipe); err != nil {
+	return Parse(contents)
+}
+
+func Parse(contents []byte) (Recipe, error) {
+	var value Recipe
+	if err := toml.Unmarshal(contents, &value); err != nil {
 		return Recipe{}, fmt.Errorf("parse recipe: %w", err)
 	}
-	if err := recipe.Validate(); err != nil {
+	if err := value.Validate(); err != nil {
 		return Recipe{}, err
 	}
-	return recipe, nil
+	return value, nil
 }
 
 // CustomHuggingFace creates a conservative SGLang recipe. It makes no capacity
@@ -120,8 +125,8 @@ func (recipe Recipe) Validate() error {
 	if recipe.Serve.ContextWindow < 1 || recipe.Serve.MaxOutputTokens < 1 || recipe.Serve.MaxRunningRequests < 1 {
 		return fmt.Errorf("positive server limits are required")
 	}
-	if recipe.Requirements.MinimumVRAMGB < 0 {
-		return fmt.Errorf("minimum VRAM cannot be negative")
+	if recipe.Requirements.MinimumVRAMGB < 0 || recipe.Requirements.MinimumDiskGB < 0 {
+		return fmt.Errorf("minimum VRAM and disk cannot be negative")
 	}
 	return nil
 }

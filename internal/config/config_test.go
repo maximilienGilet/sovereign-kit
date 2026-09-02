@@ -42,6 +42,27 @@ known_hosts_file = "/home/alice/.ssh/sovkit_known_hosts"
 	}
 }
 
+func TestVastStudioRecordsInstance(t *testing.T) {
+	cfg := VastStudio(987, "gpu.example", 22022, "/tmp/id", "/tmp/known_hosts")
+	if cfg.Provider.Kind != "vast" || cfg.Provider.InstanceID != 987 || cfg.SSH.User != "root" {
+		t.Fatalf("unexpected config: %#v", cfg)
+	}
+}
+
+func TestValidateRequiresProviderSpecificInstanceIDs(t *testing.T) {
+	vast := Studio("gpu.example", 22, "root", "/tmp/id", "/tmp/known_hosts")
+	vast.Provider = Provider{Kind: "vast"}
+	if err := vast.Validate(); err == nil {
+		t.Fatal("expected Vast config with zero instance ID to be rejected")
+	}
+
+	manual := Studio("gpu.example", 22, "root", "/tmp/id", "/tmp/known_hosts")
+	manual.Provider.InstanceID = 987
+	if err := manual.Validate(); err == nil {
+		t.Fatal("expected manual config with non-zero instance ID to be rejected")
+	}
+}
+
 func TestLoadRejectsAPublicInferenceBinding(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	content := `version = 1

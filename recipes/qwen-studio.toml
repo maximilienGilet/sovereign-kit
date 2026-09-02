@@ -18,3 +18,4 @@ max_running_requests = 5
 
 [requirements]
 minimum_vram_gb = 96
+minimum_disk_gb = 120

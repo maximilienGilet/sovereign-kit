@@ -59,6 +59,12 @@ func Studio(host string, port int, user, identityFile, knownHostsFile string) Co
 	}
 }
 
+func VastStudio(instanceID int, host string, port int, identityFile, knownHostsFile string) Config {
+	cfg := Studio(host, port, "root", identityFile, knownHostsFile)
+	cfg.Provider = Provider{Kind: "vast", InstanceID: instanceID}
+	return cfg
+}
+
 func Load(path string) (Config, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -115,8 +121,11 @@ func (cfg Config) Validate() error {
 	if cfg.Provider.Kind != "manual" && cfg.Provider.Kind != "vast" {
 		return fmt.Errorf("provider kind must be manual or vast")
 	}
-	if cfg.Provider.InstanceID < 0 {
-		return fmt.Errorf("provider instance_id cannot be negative")
+	if cfg.Provider.Kind == "manual" && cfg.Provider.InstanceID != 0 {
+		return fmt.Errorf("manual provider instance_id must be zero")
+	}
+	if cfg.Provider.Kind == "vast" && cfg.Provider.InstanceID < 1 {
+		return fmt.Errorf("vast provider instance_id must be positive")
 	}
 	if cfg.Route.LocalHost != "127.0.0.1" || cfg.Route.RemoteHost != "127.0.0.1" {
 		return fmt.Errorf("the inference route must use loopback (127.0.0.1) on both sides")
