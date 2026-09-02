@@ -49,6 +49,10 @@ func requireReadableRegularFile(label, path string) error {
 
 // Command creates the SSH process for cfg's fixed loopback forward.
 func Command(cfg config.Config) (*exec.Cmd, error) {
+	return CommandContext(context.Background(), cfg)
+}
+
+func CommandContext(ctx context.Context, cfg config.Config) (*exec.Cmd, error) {
 	if err := requireReadableRegularFile("SSH identity file", cfg.SSH.IdentityFile); err != nil {
 		return nil, err
 	}
@@ -56,7 +60,8 @@ func Command(cfg config.Config) (*exec.Cmd, error) {
 		return nil, err
 	}
 
-	return exec.Command(
+	return exec.CommandContext(
+		ctx,
 		"ssh",
 		"-N",
 		"-o", "BatchMode=yes",

@@ -128,3 +128,21 @@ func TestCommandBuildsPinnedLoopbackSSHForward(t *testing.T) {
 		t.Fatalf("command args = %#v, want %#v", cmd.Args, want)
 	}
 }
+func TestCommandContextPreservesCommandArguments(t *testing.T) {
+	dir := t.TempDir()
+	identity := writeRegularFile(t, dir, "identity", "private key")
+	knownHosts := writeRegularFile(t, dir, "known_hosts", "gpu.example.test ssh-ed25519 AAAA")
+	cfg := config.Studio("gpu.example.test", 22022, "sovkit", identity, knownHosts)
+
+	want, err := Command(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := CommandContext(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Args, want.Args) {
+		t.Fatalf("command args = %#v, want %#v", got.Args, want.Args)
+	}
+}
