@@ -351,3 +351,85 @@ func TestStartRejectsHealthResultAfterTimerExpiry(t *testing.T) {
 		t.Fatalf("stop count = %d, want 1", tunnel.stopCount)
 	}
 }
+type trackingStartTimer struct {
+	stopCount int
+}
+
+func (t *trackingStartTimer) C() <-chan time.Time {
+	return nil
+}
+
+func (t *trackingStartTimer) Stop() bool {
+	t.stopCount++
+	return true
+}
+
+func TestStartStopsTimerWhenTunnelExitsDuringHealthcheck(t *testing.T) {
+	events := []string{}
+	clock := &startTestClock{events: &events, now: time.Unix(0, 0)}
+	tunnelErr := errors.New("ssh exited")
+	tunnel := &startTestTunnel{events: &events, done: make(chan error, 1)}
+	healthStarted := make(chan struct{})
+	timer := &trackingStartTimer{}
+	deps := startTestDependencies(tunnel, clock, func(ctx context.Context, _ string) error {
+		close(healthStarted)
+		<-ctx.Done()
+		return ctx.Err()
+	}, func(_ io.Writer) error {
+		t.Fatal("dashboard ran after tunnel exit")
+		return nil
+	})
+	previousTimer := newStartTimer
+	t.Cleanup(func() { newStartTimer = previousTimer })
+	newStartTimer = func(time.Duration) startTimer { return timer }
+	go func() {
+		<-healthStarted
+		tunnel.done <- tunnelErr
+	}()
+
+	err := Start(context.Background(), io.Discard, startTestConfig(t), deps)
+	if !errors.Is(err, tunnelErr) {
+		t.Fatalf("error = %v, want %v", err, tunnelErr)
+	}
+	if timer.stopCount != 1 {
+		t.Fatalf("timer stop count = %d, want 1", timer.stopCount)
+	}
+	if tunnel.stopCount != 1 {
+		t.Fatalf("tunnel stop count = %d, want 1", tunnel.stopCount)
+	}
+}
+
+func TestStartStopsTimerWhenParentCancelsDuringHealthcheck(t *testing.T) {
+	events := []string{}
+	clock := &startTestClock{events: &events, now: time.Unix(0, 0)}
+	tunnel := &startTestTunnel{events: &events, done: make(chan error, 1)}
+	healthStarted := make(chan struct{})
+	timer := &trackingStartTimer{}
+	deps := startTestDependencies(tunnel, clock, func(ctx context.Context, _ string) error {
+		close(healthStarted)
+		<-ctx.Done()
+		return ctx.Err()
+	}, func(_ io.Writer) error {
+		t.Fatal("dashboard ran after parent cancellation")
+		return nil
+	})
+	previousTimer := newStartTimer
+	t.Cleanup(func() { newStartTimer = previousTimer })
+	newStartTimer = func(time.Duration) startTimer { return timer }
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-healthStarted
+		cancel()
+	}()
+
+	err := Start(ctx, io.Discard, startTestConfig(t), deps)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
+	}
+	if timer.stopCount != 1 {
+		t.Fatalf("timer stop count = %d, want 1", timer.stopCount)
+	}
+	if tunnel.stopCount != 1 {
+		t.Fatalf("tunnel stop count = %d, want 1", tunnel.stopCount)
+	}
+}

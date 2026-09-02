@@ -558,13 +558,13 @@ for _, expected := range []string{
     "StrictHostKeyChecking=yes",
     "UserKnownHostsFile=/tmp/vast-987_known_hosts",
     "sglang serve",
-    "--model-path 'RadixArk/Qwen3.8-27B-NVFP4'",
-    "--revision '319f741cce68d7914884900c138a1fbb70a42f30'",
-    "--context-length '262144'",
-    "--max-running-requests '5'",
-    "--host '127.0.0.1'",
-    "--port '30000'",
-} {
+    "'--model-path' 'RadixArk/Qwen3.8-27B-NVFP4'",
+    "'--revision' '319f741cce68d7914884900c138a1fbb70a42f30'",
+    "'--context-length' '262144'",
+    "'--max-running-requests' '5'",
+    "'--host' '127.0.0.1'",
+    "'--port' '30000'",
+}
     if !strings.Contains(joined, expected) {
         t.Fatalf("command missing %q: %s", expected, joined)
     }

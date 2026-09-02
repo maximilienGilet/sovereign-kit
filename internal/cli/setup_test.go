@@ -20,9 +20,13 @@ type fakeSetupPrompter struct {
 	identity       string
 	identityInput  string
 	selectOfferErr error
+	events         *[]string
 }
 
 func (p *fakeSetupPrompter) SelectProvider(context.Context) (string, error) {
+	if p.events != nil {
+		*p.events = append(*p.events, "select-provider")
+	}
 	return p.provider, nil
 }
 
@@ -147,29 +151,54 @@ func TestSetupVastDefaultsToExistingEd25519Identity(t *testing.T) {
 		t.Fatalf("unexpected runner args token=%q identity=%q", gotToken, gotIdentity)
 	}
 }
-
 func TestSetupVastPrintsResultAndStartNextStep(t *testing.T) {
 	output := &bytes.Buffer{}
+	configPath := filepath.Join(t.TempDir(), "custom-config.toml")
 	deps := SetupDependencies{
 		Prompter: &fakeSetupPrompter{provider: "vast", identity: "/home/alice/.ssh/id_ed25519"},
 		Getenv:   func(string) string { return "secret-token" },
 		HomeDir:  func() (string, error) { return "/home/alice", nil },
 		RunVast: func(context.Context, string, string, setup.Operator) (setup.Result, error) {
-			return setup.Result{InstanceID: 987}, nil
+			return setup.Result{InstanceID: 987, ConfigPath: configPath}, nil
 		},
 	}
-	if err := Setup(context.Background(), bytes.NewBuffer(nil), output, filepath.Join(t.TempDir(), "config.toml"), "alice", deps); err != nil {
+	if err := Setup(context.Background(), bytes.NewBuffer(nil), output, configPath, "alice", deps); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, want := range []string{"987", "billing may still be active", "Next: sovkit start"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("output missing %q: %s", want, text)
-		}
+	want := "Sovereign Kit setup\nVast instance 987 created.\nConfiguration saved: " + configPath + "\nWarning: billing may still be active for this instance.\nNext: sovkit start\n"
+	if text != want {
+		t.Fatalf("output = %q, want %q", text, want)
 	}
 	if strings.Contains(text, "secret-token") {
 		t.Fatal("output leaked API token")
 	}
+}
+
+func TestSetupPrintsTitleBeforeProviderPrompt(t *testing.T) {
+	events := []string{}
+	prompter := &fakeSetupPrompter{provider: "vast", events: &events}
+	output := eventWriter{events: &events}
+	deps := SetupDependencies{
+		Prompter: prompter,
+		Getenv:   func(string) string { return "" },
+	}
+	if err := Setup(context.Background(), bytes.NewBuffer(nil), output, filepath.Join(t.TempDir(), "config.toml"), "alice", deps); err == nil {
+		t.Fatal("expected missing API key error")
+	}
+	want := []string{"output", "select-provider"}
+	if len(events) < len(want) || events[0] != want[0] || events[1] != want[1] {
+		t.Fatalf("events = %#v, want prefix %#v", events, want)
+	}
+}
+
+type eventWriter struct {
+	events *[]string
+}
+
+func (w eventWriter) Write(data []byte) (int, error) {
+	*w.events = append(*w.events, "output")
+	return len(data), nil
 }
 
 func TestSetupManualValidatesBothCredentialFiles(t *testing.T) {

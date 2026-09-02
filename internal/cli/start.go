@@ -148,10 +148,12 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 				return deps.RunDashboard(output)
 			}
 		case tunnelErr := <-tunnel.Done():
+			stopStartTimer(timer)
 			cancelHealth()
 			<-healthDone
 			return tunnelExitError(tunnelErr)
 		case <-ctx.Done():
+			stopStartTimer(timer)
 			cancelHealth()
 			<-healthDone
 			return ctx.Err()
@@ -180,6 +182,16 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 		}
 	}
 }
+
+func stopStartTimer(timer startTimer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C():
+		default:
+		}
+	}
+}
+
 
 func tunnelExitError(err error) error {
 	if err == nil {

@@ -55,3 +55,33 @@ func TestCreateInstanceRejectsMissingToken(t *testing.T) {
 		t.Fatalf("expected token error, got %v", err)
 	}
 }
+func TestCreateInstanceRejectsInvalidRequestsBeforeHTTP(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-token")
+	validImage := "lmsysorg/sglang@sha256:e21dd539b36ea7842101393ec3fe3b0d453626cd8251e4d4db33af0cd97d7f0b"
+	for _, test := range []struct {
+		name    string
+		request CreateRequest
+		want    string
+	}{
+		{name: "blank image", request: CreateRequest{DiskGB: 120}, want: "image is required"},
+		{name: "mutable image", request: CreateRequest{Image: "lmsysorg/sglang:latest", DiskGB: 120}, want: "image must be pinned by sha256 digest"},
+		{name: "non-positive disk", request: CreateRequest{Image: validImage, DiskGB: 0}, want: "disk size must be positive"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := client.CreateInstance(context.Background(), 42, test.request)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+			if requests != 0 {
+				t.Fatalf("invalid request reached HTTP: %d requests", requests)
+			}
+		})
+	}
+}

@@ -102,8 +102,14 @@ func (client *Client) CreateInstance(ctx context.Context, offerID int, request C
 	if offerID <= 0 {
 		return 0, fmt.Errorf("Vast offer ID must be positive")
 	}
-	if strings.TrimSpace(request.Image) == "" || request.DiskGB <= 0 || !isDigestImage(request.Image) {
-		return 0, fmt.Errorf("image digest and positive disk size are required")
+	if strings.TrimSpace(request.Image) == "" {
+		return 0, fmt.Errorf("Vast image is required")
+	}
+	if !isDigestImage(request.Image) {
+		return 0, fmt.Errorf("Vast image must be pinned by sha256 digest")
+	}
+	if request.DiskGB <= 0 {
+		return 0, fmt.Errorf("Vast disk size must be positive")
 	}
 	body, err := json.Marshal(createPayload{
 		Image: request.Image, DiskGB: request.DiskGB, Runtype: "ssh_direct", Label: request.Label,

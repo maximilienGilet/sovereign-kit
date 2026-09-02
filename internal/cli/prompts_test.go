@@ -1,9 +1,13 @@
 package cli
 
 import (
-	"strings"
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
-
+	"strings"
 	"github.com/charmbracelet/huh"
 	"github.com/maximilienGilet/sovereign-kit/internal/setup"
 	"github.com/maximilienGilet/sovereign-kit/internal/vast"
@@ -52,12 +56,65 @@ func TestOfferOptionsUseOfferIDs(t *testing.T) {
 
 func TestConfirmationTitlesDescribeIrreversibleActions(t *testing.T) {
 	cost := costConfirmationTitle(setup.OfferView{Offer: vast.Offer{GPUName: "A", HourlyUSD: 1}}, 100)
-	if !strings.Contains(strings.ToLower(cost), "billing") || !strings.Contains(strings.ToLower(cost), "irreversible") {
-		t.Fatalf("cost title lacks billing warning: %s", cost)
+	for _, want := range []string{"$1.00/h", "100 GB disk", "billing", "irreversible", "Compute only; excludes storage, egress, and tax."} {
+		if !strings.Contains(cost, want) {
+			t.Fatalf("cost title missing %q: %s", want, cost)
+		}
 	}
 	keys := hostKeyConfirmationTitle([]string{"SHA256:abc"})
 	if !strings.Contains(strings.ToLower(keys), "first-use") || !strings.Contains(strings.ToLower(keys), "trust") {
 		t.Fatalf("host key title lacks trust warning: %s", keys)
+	}
+}
+
+func TestOfferLabelsNameComputePeriods(t *testing.T) {
+	label := offerLabel(setup.OfferView{Offer: vast.Offer{HourlyUSD: 1}, MonthlyUSD: 730, AnnualUSD: 8760})
+	for _, want := range []string{"730h monthly compute", "8,760h annual compute", "Monthly $730.00", "Annual $8760.00"} {
+		if !strings.Contains(label, want) {
+			t.Fatalf("offer label missing %q: %s", want, label)
+		}
+	}
+}
+
+func TestMapFormErrorMapsAbortAndPassesThrough(t *testing.T) {
+	prompter := &HuhPrompter{}
+	if err := prompter.mapFormError(huh.ErrUserAborted); err == nil || err.Error() != "setup cancelled" {
+		t.Fatalf("abort error = %v, want setup cancelled", err)
+	}
+	other := errors.New("other")
+	if err := prompter.mapFormError(other); err != other {
+		t.Fatalf("other error = %v, want original error", err)
+	}
+}
+
+func TestSetupRejectsUnknownProvider(t *testing.T) {
+	err := Setup(context.Background(), strings.NewReader(""), &strings.Builder{}, "/tmp/config.toml", "alice", SetupDependencies{
+		Prompter: &fakeSetupPrompter{provider: "unknown"},
+	})
+	if err == nil || !strings.Contains(err.Error(), `unknown setup provider "unknown"`) {
+		t.Fatalf("error = %v, want unknown provider rejection", err)
+	}
+}
+
+func TestSetupManualRejectsOutOfRangePorts(t *testing.T) {
+	for _, port := range []int{0, 65536} {
+		t.Run(strconv.Itoa(port), func(t *testing.T) {
+			dir := t.TempDir()
+			identity := filepath.Join(dir, "identity")
+			knownHosts := filepath.Join(dir, "known_hosts")
+			if err := os.WriteFile(identity, []byte("key"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(knownHosts, []byte("host ssh-ed25519 AAAA"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			err := setupManual(context.Background(), &strings.Builder{}, filepath.Join(dir, "config.toml"), "alice", &fakeSetupPrompter{
+				manual: ManualRoute{Host: "gpu", Port: port, User: "alice", IdentityFile: identity, KnownHostsFile: knownHosts},
+			})
+			if err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
+				t.Fatalf("error = %v, want port bounds rejection", err)
+			}
+		})
 	}
 }
 
@@ -66,6 +123,7 @@ func TestHuhPrompterImplementsSetupInterfaces(t *testing.T) {
 	var _ setup.Operator = (*HuhPrompter)(nil)
 	var _ = huh.ErrUserAborted
 }
+
 func TestManualRouteFieldsHaveOnePrefilledSSHUser(t *testing.T) {
 	route := ManualRoute{}
 	portText := "22"
@@ -78,6 +136,9 @@ func TestManualRouteFieldsHaveOnePrefilledSSHUser(t *testing.T) {
 	}
 	if got := fields[2].GetValue(); got != "alice" {
 		t.Fatalf("expected prefilled SSH user field, got %#v", got)
+	}
+	if view := fields[2].View(); !strings.Contains(view, "alice") {
+		t.Fatalf("SSH user view = %q, want alice", view)
 	}
 	count := 0
 	for _, field := range fields {

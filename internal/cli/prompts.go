@@ -61,11 +61,11 @@ func offerLabel(view setup.OfferView) string {
 	if location == "" {
 		location = "unknown/unmeasured"
 	}
-	return fmt.Sprintf("%s · %s · $%.2f/h · Monthly $%.2f · Annual $%.2f · Location: %s · Reliability: %s", gpu, vram, view.Offer.HourlyUSD, view.MonthlyUSD, view.AnnualUSD, location, reliability)
+	return fmt.Sprintf("%s · %s · $%.2f/h · Monthly $%.2f (730h monthly compute) · Annual $%.2f (8,760h annual compute) · Location: %s · Reliability: %s", gpu, vram, view.Offer.HourlyUSD, view.MonthlyUSD, view.AnnualUSD, location, reliability)
 }
 
 func costConfirmationTitle(view setup.OfferView, diskGB int) string {
-	return fmt.Sprintf("Create a paid Vast instance at $%.2f/h with %d GB disk? This starts irreversible billing.", view.Offer.HourlyUSD, diskGB)
+	return fmt.Sprintf("Create a paid Vast instance at $%.2f/h with %d GB disk? This starts irreversible billing. Compute only; excludes storage, egress, and tax.", view.Offer.HourlyUSD, diskGB)
 }
 
 func hostKeyConfirmationTitle(fingerprints []string) string {

@@ -11,6 +11,12 @@ import (
 
 func TestSearchOffersUsesVastWireUnitsAndNormalizesVRAM(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v0/bundles" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
+		}
 		body, _ := io.ReadAll(r.Body)
 		for _, expected := range []string{
 			`"limit":5`,
@@ -41,7 +47,7 @@ func TestSearchOffersUsesVastWireUnitsAndNormalizesVRAM(t *testing.T) {
 func TestSearchOffersNormalizesNonIntegralVRAM(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"offers":[{"id":7,"gpu_name":"A10","gpu_ram":24576,"dph_total":0.4,"geolocation":"US","reliability":0.9}]}`))
+		_, _ = w.Write([]byte(`{"offers":[{"id":7,"gpu_name":"A10","gpu_ram":24000,"dph_total":0.4,"geolocation":"US","reliability":0.9}]}`))
 	}))
 	defer server.Close()
 
@@ -49,7 +55,7 @@ func TestSearchOffersNormalizesNonIntegralVRAM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(offers) != 1 || offers[0].GPUVRAMGB != 24 {
+	if len(offers) != 1 || offers[0].GPUVRAMGB != 23.4375 {
 		t.Fatalf("offers = %#v", offers)
 	}
 }

@@ -31,6 +31,65 @@ func (f *fakeCommandRunner) Run(_ context.Context, command Command) error {
 	key := command.Name + " " + strings.Join(command.Args, " ")
 	return f.errors[key]
 }
+func TestExecRunnerFailuresIncludeBoundedSanitizedStderr(t *testing.T) {
+	const keyMaterial = "gpu.example ssh-ed25519 AAAA-key-material"
+	for _, runner := range []struct {
+		name string
+		run  func(context.Context, Command) ([]byte, error)
+	}{
+		{name: "output", run: (ExecRunner{}).Output},
+		{name: "run", run: func(ctx context.Context, command Command) ([]byte, error) {
+			return nil, (ExecRunner{}).Run(ctx, command)
+		}},
+	} {
+		t.Run(runner.name, func(t *testing.T) {
+			output, err := runner.run(context.Background(), Command{
+				Name:  "sh",
+				Args:  []string{"-c", "cat >&2; printf ' visible \\n' >&2; exit 1"},
+				Stdin: []byte(keyMaterial),
+			})
+			if output != nil {
+				t.Fatalf("output = %q, want nil", output)
+			}
+			if err == nil || !strings.Contains(err.Error(), "sh failed") || !strings.Contains(err.Error(), "visible") {
+				t.Fatalf("error = %v, want command and stderr", err)
+			}
+			if strings.Contains(err.Error(), keyMaterial) {
+				t.Fatalf("error exposed stdin key material: %v", err)
+			}
+		})
+	}
+}
+
+func TestExecRunnerFailuresTruncateStderr(t *testing.T) {
+	stderr := strings.Repeat("x", 2048)
+	for _, runner := range []struct {
+		name string
+		run  func(context.Context, Command) ([]byte, error)
+	}{
+		{name: "output", run: (ExecRunner{}).Output},
+		{name: "run", run: func(ctx context.Context, command Command) ([]byte, error) {
+			return nil, (ExecRunner{}).Run(ctx, command)
+		}},
+	} {
+		t.Run(runner.name, func(t *testing.T) {
+			output, err := runner.run(context.Background(), Command{
+				Name: "sh",
+				Args: []string{"-c", "printf '%*s' 3000 '' | tr ' ' x >&2; exit 1"},
+			})
+			if output != nil {
+				t.Fatalf("output = %q, want nil", output)
+			}
+			if err == nil || !strings.Contains(err.Error(), stderr) {
+				t.Fatalf("error = %v, want bounded stderr", err)
+			}
+			if strings.Contains(err.Error(), stderr+"x") {
+				t.Fatalf("error contains more than 2 KiB stderr: %d", len(err.Error()))
+			}
+		})
+	}
+}
+
 
 func TestSystemHostKeyScannerScansAndFingerprints(t *testing.T) {
 	runner := &fakeCommandRunner{
@@ -95,6 +154,54 @@ func TestValidateIdentityFileRejectsMissingPath(t *testing.T) {
 	err := ValidateIdentityFile(filepath.Join(t.TempDir(), "missing"))
 	if err == nil {
 		t.Fatal("expected missing identity error")
+	}
+}
+
+func TestFileTrustStoreRaceRejectsChangedWinner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "known_hosts")
+	original := []byte("host ssh-ed25519 AAAA\n")
+	winner := []byte("host ssh-ed25519 BBBB\n")
+	previousLink := linkTrustStoreFile
+	t.Cleanup(func() { linkTrustStoreFile = previousLink })
+	linkTrustStoreFile = func(oldname, newname string) error {
+		if err := os.WriteFile(newname, winner, 0o600); err != nil {
+			return err
+		}
+		return os.Link(oldname, newname)
+	}
+
+	err := (FileTrustStore{}).Save(path, original)
+	if err == nil || !strings.Contains(err.Error(), "changed") {
+		t.Fatalf("expected changed-key refusal, got %v", err)
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !reflect.DeepEqual(got, winner) {
+		t.Fatalf("winner was replaced: %q", got)
+	}
+}
+
+func TestFileTrustStoreRaceAllowsIdenticalWinner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "known_hosts")
+	contents := []byte("host ssh-ed25519 AAAA\n")
+	previousLink := linkTrustStoreFile
+	t.Cleanup(func() { linkTrustStoreFile = previousLink })
+	linkTrustStoreFile = func(oldname, newname string) error {
+		if err := os.WriteFile(newname, contents, 0o644); err != nil {
+			return err
+		}
+		return os.Link(oldname, newname)
+	}
+
+	if err := (FileTrustStore{}).Save(path, contents); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	} else if info.Mode().Perm() != 0o600 {
+		t.Fatalf("winner mode = %o", info.Mode().Perm())
 	}
 }
 

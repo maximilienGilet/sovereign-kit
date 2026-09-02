@@ -38,7 +38,7 @@ func (ExecRunner) Output(ctx context.Context, command Command) ([]byte, error) {
 	process.Stderr = &stderr
 	output, err := process.Output()
 	if err != nil {
-		return nil, fmt.Errorf("%s failed: %w", command.Name, err)
+		return nil, commandFailure(command.Name, err, stderr.Bytes(), command.Stdin)
 	}
 	return output, nil
 }
@@ -49,11 +49,29 @@ func (ExecRunner) Run(ctx context.Context, command Command) error {
 		process.Stdin = bytes.NewReader(command.Stdin)
 	}
 	process.Stdout = io.Discard
-	process.Stderr = io.Discard
+	var stderr bytes.Buffer
+	process.Stderr = &stderr
 	if err := process.Run(); err != nil {
-		return fmt.Errorf("%s failed: %w", command.Name, err)
+		return commandFailure(command.Name, err, stderr.Bytes(), command.Stdin)
 	}
 	return nil
+}
+
+func commandFailure(name string, err error, stderr, stdin []byte) error {
+	displayed := strings.TrimSpace(string(stderr))
+	for _, line := range bytes.Split(stdin, []byte{'\n'}) {
+		line = bytes.TrimSpace(line)
+		if len(line) > 0 {
+			displayed = strings.ReplaceAll(displayed, string(line), "[redacted]")
+		}
+	}
+	if len(displayed) > 2048 {
+		displayed = displayed[:2048]
+	}
+	if displayed == "" {
+		return fmt.Errorf("%s failed: %w", name, err)
+	}
+	return fmt.Errorf("%s failed: %w: stderr: %s", name, err, displayed)
 }
 
 type SystemHostKeyScanner struct {
@@ -98,6 +116,8 @@ func nonBlankLines(data []byte) []string {
 	return lines
 }
 
+var linkTrustStoreFile = os.Link
+
 type FileTrustStore struct{}
 
 func (FileTrustStore) Save(path string, contents []byte) error {
@@ -137,11 +157,23 @@ func (FileTrustStore) Save(path string, contents []byte) error {
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close known-hosts temporary file: %w", err)
 	}
-	if err := os.Rename(temporaryName, path); err != nil {
-		if existing, readErr := os.ReadFile(path); readErr == nil && !bytes.Equal(existing, contents) {
-			return fmt.Errorf("known-hosts file changed; refusing overwrite")
+	if err := linkTrustStoreFile(temporaryName, path); err != nil {
+		if os.IsExist(err) {
+			existing, readErr := os.ReadFile(path)
+			if readErr == nil {
+				if !bytes.Equal(existing, contents) {
+					return fmt.Errorf("known-hosts file changed; refusing overwrite")
+				}
+				if chmodErr := os.Chmod(path, 0o600); chmodErr != nil {
+					return fmt.Errorf("protect known-hosts file: %w", chmodErr)
+				}
+				return nil
+			}
 		}
 		return fmt.Errorf("install known-hosts file: %w", err)
+	}
+	if err := os.Remove(temporaryName); err != nil {
+		return fmt.Errorf("remove known-hosts temporary file: %w", err)
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		return fmt.Errorf("protect known-hosts file: %w", err)

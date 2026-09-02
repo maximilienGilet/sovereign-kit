@@ -46,12 +46,12 @@ func Setup(ctx context.Context, input io.Reader, output io.Writer, configPath, d
 	if deps.HomeDir == nil {
 		deps.HomeDir = os.UserHomeDir
 	}
+	fmt.Fprintln(output, "Sovereign Kit setup")
 	provider, err := deps.Prompter.SelectProvider(ctx)
 	if err != nil {
 		return err
 	}
 	provider = strings.ToLower(strings.TrimSpace(provider))
-	fmt.Fprintln(output, "Sovereign Kit setup")
 	switch provider {
 	case "manual":
 		return setupManual(ctx, output, configPath, defaultUser, deps.Prompter)
@@ -109,6 +109,7 @@ func setupVast(ctx context.Context, output io.Writer, deps SetupDependencies) er
 		return err
 	}
 	fmt.Fprintf(output, "Vast instance %d created.\n", result.InstanceID)
+	fmt.Fprintf(output, "Configuration saved: %s\n", result.ConfigPath)
 	fmt.Fprintln(output, "Warning: billing may still be active for this instance.")
 	fmt.Fprintln(output, "Next: sovkit start")
 	return nil
