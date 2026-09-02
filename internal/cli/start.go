@@ -91,21 +91,59 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 		if !deps.Clock.Now().Before(deadline) {
 			return healthTimeoutError(deps.PollTimeout, lastHealthErr)
 		}
-		if err := deps.Healthcheck(ctx, endpoint); err == nil {
+		remaining := deadline.Sub(deps.Clock.Now())
+		healthCtx, cancelHealth := context.WithCancel(ctx)
+		healthDone := make(chan error, 1)
+		go func() {
+			healthDone <- deps.Healthcheck(healthCtx, endpoint)
+		}()
+		timer := time.NewTimer(remaining)
+		var healthErr error
+		select {
+		case healthErr = <-healthDone:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			cancelHealth()
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			select {
-			case tunnelErr := <-tunnel.Done():
-				return tunnelExitError(tunnelErr)
-			default:
+			if !deps.Clock.Now().Before(deadline) {
+				return healthTimeoutError(deps.PollTimeout, healthErr)
 			}
-			if _, err := fmt.Fprintln(output, "LIVE: endpoint healthy"); err != nil {
-				return err
+			if healthErr == nil {
+				select {
+				case tunnelErr := <-tunnel.Done():
+					return tunnelExitError(tunnelErr)
+				default:
+				}
+				if _, err := fmt.Fprintln(output, "LIVE: endpoint healthy"); err != nil {
+					return err
+				}
+				return deps.RunDashboard(output)
 			}
-			return deps.RunDashboard(output)
-		} else {
-			lastHealthErr = err
+		case tunnelErr := <-tunnel.Done():
+			cancelHealth()
+			<-healthDone
+			return tunnelExitError(tunnelErr)
+		case <-ctx.Done():
+			cancelHealth()
+			<-healthDone
+			return ctx.Err()
+		case <-timer.C:
+			cancelHealth()
+			<-healthDone
+			return healthTimeoutError(deps.PollTimeout, lastHealthErr)
+		}
+		if healthErr == nil {
+			continue
+		}
+		lastHealthErr = healthErr
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		select {
 		case tunnelErr := <-tunnel.Done():

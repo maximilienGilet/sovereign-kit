@@ -236,3 +236,80 @@ func TestStartLoadsConfigBeforeCreatingTunnel(t *testing.T) {
 		t.Fatalf("stop count = %d, want 0 before tunnel creation", tunnel.stopCount)
 	}
 }
+func TestStartAbortsBlockedHealthAtPollTimeout(t *testing.T) {
+	events := []string{}
+	clock := &startTestClock{events: &events, now: time.Unix(0, 0)}
+	tunnel := &startTestTunnel{events: &events, done: make(chan error, 1)}
+	healthStarted := make(chan struct{})
+	healthReleased := make(chan struct{})
+	deps := startTestDependencies(tunnel, clock, func(ctx context.Context, _ string) error {
+		close(healthStarted)
+		<-ctx.Done()
+		close(healthReleased)
+		return ctx.Err()
+	}, func(_ io.Writer) error {
+		t.Fatal("dashboard ran after blocked health timeout")
+		return nil
+	})
+	deps.PollTimeout = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-healthStarted
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	err := Start(ctx, io.Discard, startTestConfig(t), deps)
+	if err == nil || !strings.Contains(err.Error(), "healthcheck timed out") {
+		t.Fatalf("error = %v, want healthcheck timeout", err)
+	}
+	select {
+	case <-healthReleased:
+	case <-time.After(time.Second):
+		t.Fatal("healthcheck did not release after timeout")
+	}
+	if tunnel.stopCount != 1 {
+		t.Fatalf("stop count = %d, want 1", tunnel.stopCount)
+	}
+}
+
+func TestStartAbortsBlockedHealthWhenTunnelExits(t *testing.T) {
+	events := []string{}
+	clock := &startTestClock{events: &events, now: time.Unix(0, 0)}
+	tunnelErr := errors.New("ssh exited")
+	tunnel := &startTestTunnel{events: &events, done: make(chan error, 1)}
+	healthStarted := make(chan struct{})
+	healthReleased := make(chan struct{})
+	deps := startTestDependencies(tunnel, clock, func(ctx context.Context, _ string) error {
+		close(healthStarted)
+		<-ctx.Done()
+		close(healthReleased)
+		return ctx.Err()
+	}, func(_ io.Writer) error {
+		t.Fatal("dashboard ran after tunnel exit")
+		return nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-healthStarted
+		time.Sleep(10 * time.Millisecond)
+		tunnel.done <- tunnelErr
+		time.Sleep(40 * time.Millisecond)
+		cancel()
+	}()
+
+	err := Start(ctx, io.Discard, startTestConfig(t), deps)
+	if !errors.Is(err, tunnelErr) {
+		t.Fatalf("error = %v, want %v", err, tunnelErr)
+	}
+	select {
+	case <-healthReleased:
+	case <-time.After(time.Second):
+		t.Fatal("healthcheck did not release after tunnel exit")
+	}
+	if tunnel.stopCount != 1 {
+		t.Fatalf("stop count = %d, want 1", tunnel.stopCount)
+	}
+}
