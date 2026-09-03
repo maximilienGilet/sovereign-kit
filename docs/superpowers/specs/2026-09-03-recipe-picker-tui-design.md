@@ -46,7 +46,7 @@ The detail panel contains:
 2. a configured-context bar when the model's native context is known;
 3. absolute server limits for output tokens and concurrent requests;
 4. the strict accelerator, minimum VRAM, and minimum disk contract;
-5. a concise “choose this recipe if” explanation derived from recipe metadata;
+5. a concise “choose this recipe if” explanation sourced from structured recipe metadata;
 6. model, revision, runtime, and evidence details;
 7. an explicit `NOT MEASURED` state for exact-profile throughput;
 8. the action to use the active recipe.
@@ -65,7 +65,9 @@ The custom Hugging Face entry may have no native-context or hardware evidence. I
 
 - `up`/`down` and `j`/`k`: change the active entry through the Bubbles list;
 - `enter`: choose the active entry and exit the picker;
-- `i`: toggle expanded evidence and technical details;
+- `i`: open an expanded evidence and technical-detail viewport;
+- `up`/`down`, `j`/`k`, `pgup`/`pgdown` while that viewport is open: scroll it;
+- `i`, `esc`, or `q` while that viewport is open: close it and return to the recipe list;
 - `esc` or `q`: cancel without choosing a recipe;
 - `ctrl+c`: cancel through Bubble Tea's normal quit path.
 
@@ -73,18 +75,19 @@ Filtering remains available in the standalone `sovkit catalog` browser. It is di
 
 ### Terminal sizing
 
-The picker responds to `tea.WindowSizeMsg`, using the existing project conventions:
+The picker responds to `tea.WindowSizeMsg` and uses the breakpoints already established by the deployment review:
 
-- wide terminals show the recipe list and full detail dashboard side by side;
-- compact terminals keep list and detail visible but shorten secondary copy and the progress axis;
-- terminals below the rich-layout threshold show a minimal active-recipe summary with exact values and no decorative chart;
+- terminals smaller than 72 columns or 24 lines use the minimal view: active recipe name, exact limits, hardware contract, and selection controls, with no proportional chart;
+- terminals from 72 through 133 columns use the compact view: recipe list and shortened detail panel side by side, with a shortened progress bar and no expanded inline evidence;
+- terminals at least 134 columns wide and 30 lines high use the wide view: recipe list and full detail dashboard side by side;
+- a terminal at least 134 columns wide but fewer than 30 lines high remains compact;
 - every variant must fit the reported width and height without wrapping outside the viewport.
 
 The implementation should reuse the sizing and Lip Gloss composition patterns already present in `internal/catalogui` and `internal/cli/rental_review.go`. It must not introduce a general-purpose layout engine.
 
 ### Accessible fallback
 
-When `TERM=dumb` or `ACCESSIBLE` is set, `SelectWorkload` retains the current Huh selection flow. The labels include recipe name, evidence status, exact GPU, and configured context. The fallback returns the same stable recipe ID as the rich picker.
+When `TERM=dumb` or `ACCESSIBLE` is set, `SelectWorkload` retains the current Huh selection flow. Huh already enables accessible mode for `TERM=dumb`; the `ACCESSIBLE` branch must explicitly configure the form with `WithAccessible(true)`. The labels include recipe name, evidence status, exact GPU, and configured context. The fallback returns the same stable recipe ID as the rich picker.
 
 ## Architecture
 
@@ -101,7 +104,8 @@ Both modes reuse:
 
 - `bubbles/list` for entry navigation;
 - `bubbles/progress` for the configured/native context bar;
-- `bubbles/help` or the list key map for terminal-aware help text;
+- the Bubbles help component driven by the picker's explicit key map for terminal-aware help text;
+- `bubbles/viewport` for the expanded evidence and technical-detail screen;
 - Lip Gloss for borders, alignment, width calculation, joining panels, and the existing color language;
 - Bubble Tea commands, messages, alternate-screen lifecycle, and resize events.
 
@@ -122,15 +126,20 @@ The typed fields cover:
 - minimum VRAM and disk;
 - model repository and pinned revision;
 - runtime summary;
-- profile status, summary, and evidence.
+- profile status, summary, structured `use_when` guidance, and evidence.
 
-`DefaultEntries` remains the adapter from bundled `recipe.Recipe` values to catalog entries. The custom Hugging Face entry uses its existing stable sentinel value and unknown fields.
+`DefaultEntries` remains the adapter from bundled `recipe.Recipe` values to catalog entries in browse mode. Picker callers supply every stable selection value. `SelectWorkload` appends the custom Hugging Face entry with the existing `customHuggingFaceWorkload` sentinel, so `catalogui` neither imports `internal/cli` nor duplicates that constant.
 
 ### Recipe data
 
-The recipe model gains an optional typed native-context field associated with the pinned model revision. A non-zero native context must be positive and greater than or equal to the configured context window. Bundled recipes that display the context ratio declare the verified native value in TOML.
+The recipe model gains:
 
-Custom recipes may leave this value unknown. In that case, the picker shows the configured context as an absolute value and omits the progress visualization.
+- `model.native_context_window`, an optional typed native-context field associated with the pinned model revision;
+- `profile.use_when`, a list of short operator-facing conditions that supply the decision guidance without recipe-specific UI branches.
+
+A non-zero native context must be positive and greater than or equal to the configured context window. Bundled recipes that display the context ratio declare the verified native value in TOML. Bundled recipes declare at least one non-empty `use_when` item. Custom recipes may omit decision guidance when inspection is the required next step.
+
+Custom recipes may leave the native-context value unknown. In that case, the picker shows the configured context as an absolute value and omits the progress visualization.
 
 No throughput schema is added in this change. The absence of an exact benchmark remains explicit rather than being represented by invented zero values.
 
@@ -167,6 +176,7 @@ No provider request or mutable external action occurs while browsing recipes.
 ### Recipe model
 
 - parse the native-context field from bundled TOML;
+- parse and validate structured `profile.use_when` guidance;
 - accept an omitted native context for custom recipes;
 - reject a native context smaller than the configured context;
 - confirm both bundled recipes expose the intended native context.
@@ -176,7 +186,7 @@ No provider request or mutable external action occurs while browsing recipes.
 - navigation updates the active detail panel without displaying metrics from another entry;
 - picker `enter` returns the active stable value;
 - `esc`, `q`, and `ctrl+c` cancel without selecting;
-- `i` toggles evidence detail;
+- `i` opens a Bubbles viewport, its navigation scrolls without changing the recipe, and its close keys return focus to the list;
 - browse mode retains filtering and does not gain picker-only behavior;
 - known native context renders the exact ratio through Bubbles progress;
 - unknown native context omits the progress chart and renders an explicit unknown state;
@@ -187,7 +197,7 @@ No provider request or mutable external action occurs while browsing recipes.
 
 - an interactive picker selection follows the existing built-in recipe path;
 - the custom sentinel follows the existing Hugging Face path;
-- accessible and dumb-terminal modes retain the Huh selection flow;
+- accessible and dumb-terminal modes retain the Huh selection flow, with Huh explicitly placed in accessible mode for `ACCESSIBLE`;
 - cancellation and Bubble Tea errors propagate without starting an offer search or deployment;
 - injected input and output streams remain testable without a real terminal.
 
