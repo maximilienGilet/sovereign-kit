@@ -8,6 +8,23 @@
 
 **Tech Stack:** Go, Bubble Tea/Bubbles/Lip Gloss, existing clipboard library, existing Pi integration packages.
 
+## Completion — 2026-09-04
+
+Implemented in `0c34ef8`, with review fixes in `1b66f1c` and `f4f0c98`.
+Task review and final integrated review identified five concrete issues; all were
+fixed and approved in scoped re-reviews. No open findings remain for this task.
+
+Final independent verification: `go test -count=1 ./...` passed 535 tests in 15
+packages; the complete Python suite passed 13 tests; CLI build and shell syntax
+checks passed. Installed Pi 0.84.2 accepted a generated temporary profile and its
+local placeholder authentication in offline mode. No live profile installation,
+package download, endpoint smoke test, or remote mutation was performed.
+
+Existing configurations without verified model limits remain usable for generic
+endpoint connections, but cannot install a model-specific profile until those
+limits are available. Existing unrelated working-tree changes were preserved;
+this verification does not claim clean-checkout or merge readiness.
+
 ## Global Constraints
 
 - Specification: docs/superpowers/specs/2026-09-04-endpoint-dashboard-design.md.
