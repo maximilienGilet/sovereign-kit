@@ -57,6 +57,11 @@ func (s Service) Install(ctx context.Context, t Target, e Endpoint, confirmed In
 			return fail(err)
 		}
 	}
+	// Validate confinement again against the staging root before reading staged
+	// configuration or allowing a package manager to follow any copied links.
+	if _, err := snapshot(ctx, stageTarget); err != nil {
+		return fail(fmt.Errorf("unsafe staged profile: %w", err))
+	}
 	originals := map[string]map[string]any{}
 	names := managed(t)
 	if t.Kind == Pi {
@@ -92,6 +97,9 @@ func (s Service) Install(ctx context.Context, t Target, e Endpoint, confirmed In
 	if t.Kind == Pi {
 		if err := checkPackages(stage); err != nil {
 			for _, p := range packages {
+				if _, err := snapshot(installCtx, stageTarget); err != nil {
+					return fail(fmt.Errorf("unsafe staged package links: %w", err))
+				}
 				if err = run(installCtx, "pi", []string{"install", p}, []string{"PI_CODING_AGENT_DIR=" + stage}); err != nil {
 					return fail(fmt.Errorf("package installation failed: %w", err))
 				}
@@ -182,6 +190,9 @@ func copyTree(ctx context.Context, source, dest string) error {
 			link, err := os.Readlink(path)
 			if err != nil {
 				return err
+			}
+			if filepath.IsAbs(link) {
+				return fmt.Errorf("cannot safely stage absolute symlink: %s", path)
 			}
 			return os.Symlink(link, target)
 		}

@@ -28,6 +28,7 @@ type Model struct {
 	inspection                    clientprofile.Inspection
 	confirm, busy                 bool
 	operation                     uint64
+	discoveryOperation            uint64
 }
 type WorkResult struct {
 	Operation  uint64
@@ -77,7 +78,7 @@ func (m Model) Init() tea.Cmd {
 	return m.discover()
 }
 func (m Model) discover() tea.Cmd {
-	ctx, base, saved, discover, op := m.ctx, m.endpoint.BaseURL, m.saved, m.deps.Discover, m.operation
+	ctx, base, saved, discover, op := m.ctx, m.endpoint.BaseURL, m.saved, m.deps.Discover, m.discoveryOperation
 	return func() tea.Msg {
 		return WorkResult{Operation: op, Kind: "discover", Endpoint: discover(ctx, base, saved)}
 	}
@@ -128,11 +129,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Copied — paste in your application or project terminal."
 		}
 	case WorkResult:
-		if msg.Operation != m.operation || m.ctx.Err() != nil {
+		if m.ctx.Err() != nil {
 			return m, nil
 		}
 		if msg.Kind == "discover" {
+			if msg.Operation != m.discoveryOperation {
+				return m, nil
+			}
 			m.endpoint = msg.Endpoint
+			return m, nil
+		}
+		if msg.Operation != m.operation {
 			return m, nil
 		}
 		m.busy = false
@@ -198,7 +205,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.scroll = 0
 			case "r":
 				if !m.busy {
-					m.operation++
+					m.discoveryOperation++
 					m.endpoint.Problem = "Checking endpoint…"
 					return m, m.discover()
 				}

@@ -27,6 +27,30 @@ func TestSavedMetadataIsNotPresentedAsDiscoveredIdentity(t *testing.T) {
 		t.Fatal("saved model presented before discovery")
 	}
 }
+
+func TestInitialDiscoverySurvivesOpeningIntegration(t *testing.T) {
+	e := endpointFixture()
+	e.Problem = "Checking model identity…"
+	m := NewEndpoint(context.Background(), e, 0, Dependencies{Discover: func(context.Context, string, clientprofile.Metadata) clientprofile.Endpoint { return endpointFixture() }, Resolve: func(k clientprofile.Integration) (clientprofile.Target, error) {
+		return clientprofile.Target{k, "/tmp/fixture"}, nil
+	}, Inspect: func(context.Context, clientprofile.Target, clientprofile.Endpoint) clientprofile.Inspection {
+		return clientprofile.Inspection{State: clientprofile.Absent}
+	}}).SetHealthy(true)
+	discovery := m.Init()
+	m.cursor = 3
+	m, inspect := key(m, tea.KeyEnter)
+	m = result(m, inspect)
+	m = result(m, discovery)
+	m, _ = key(m, tea.KeyEsc)
+	if !strings.Contains(m.View(), "owner/solo") || strings.Contains(m.View(), "Checking model identity") {
+		t.Fatal("integration discarded initial model discovery")
+	}
+	m, inspect = key(m, tea.KeyEnter)
+	m = result(m, inspect)
+	if m.page != "confirm" {
+		t.Fatalf("discovered model did not enable fresh inspection: %s", m.page)
+	}
+}
 func TestIntegrationInspectsBeforeCancelDefaultConfirmation(t *testing.T) {
 	inspections, installs := 0, 0
 	m := NewEndpoint(context.Background(), endpointFixture(), 42, Dependencies{

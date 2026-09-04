@@ -263,7 +263,11 @@ func render(t Target, e Endpoint, original map[string]map[string]any) (map[strin
 				}
 				name := strings.Split(required, "@")[0]
 				if source == name || strings.HasPrefix(source, name+"@") {
-					list[i] = required
+					if entry, ok := item.(map[string]any); ok {
+						entry["source"] = required
+					} else {
+						list[i] = required
+					}
 					found = true
 				}
 			}
@@ -277,13 +281,42 @@ func render(t Target, e Endpoint, original map[string]map[string]any) (map[strin
 			return nil, err
 		}
 		sub["defaultModel"] = provider + "/" + e.ID
-		sub["modelScope"] = map[string]any{"enforce": true, "strict": true, "allow": []any{provider + "/*"}}
+		scope, err := object(sub, "modelScope")
+		if err != nil {
+			return nil, err
+		}
+		mergeOwned(scope, map[string]any{"enforce": true, "strict": true, "allow": []any{provider + "/*"}})
 		models := get("models.json")
 		providers, err := object(models, "providers")
 		if err != nil {
 			return nil, err
 		}
-		providers[provider] = map[string]any{"baseUrl": e.BaseURL, "api": "openai-completions", "apiKey": "local-qwen-tunnel", "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": false}, "models": []any{map[string]any{"id": e.ID, "name": e.ID, "reasoning": false, "input": []any{"text"}, "contextWindow": float64(e.ContextWindow), "maxTokens": float64(e.MaxTokens), "cost": map[string]any{"input": float64(0), "output": float64(0), "cacheRead": float64(0), "cacheWrite": float64(0)}}}}
+		p, err := object(providers, provider)
+		if err != nil {
+			return nil, err
+		}
+		mergeOwned(p, map[string]any{"baseUrl": e.BaseURL, "api": "openai-completions", "apiKey": "local-qwen-tunnel", "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": false}})
+		list, ok = p["models"].([]any)
+		if p["models"] != nil && !ok {
+			return nil, fmt.Errorf("provider models must be an array")
+		}
+		var selected map[string]any
+		for _, entry := range list {
+			model, ok := entry.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("provider model must be an object")
+			}
+			if model["id"] == e.ID {
+				selected = model
+				break
+			}
+		}
+		if selected == nil {
+			selected = map[string]any{"id": e.ID, "name": e.ID, "reasoning": false, "input": []any{"text"}, "cost": map[string]any{"input": float64(0), "output": float64(0), "cacheRead": float64(0), "cacheWrite": float64(0)}}
+			list = append(list, selected)
+		}
+		selected["contextWindow"], selected["maxTokens"] = float64(e.ContextWindow), float64(e.MaxTokens)
+		p["models"] = list
 	} else {
 		cfg := get(filepath.Base(t.Path))
 		cfg["model"] = provider + "/" + e.ID
@@ -292,9 +325,33 @@ func render(t Target, e Endpoint, original map[string]map[string]any) (map[strin
 		if err != nil {
 			return nil, err
 		}
-		providers[provider] = map[string]any{"npm": "@ai-sdk/openai-compatible", "name": "Sovereign Kit", "options": map[string]any{"baseURL": e.BaseURL, "apiKey": "local-qwen-tunnel"}, "models": map[string]any{e.ID: map[string]any{"name": e.ID, "limit": map[string]any{"context": float64(e.ContextWindow), "output": float64(e.MaxTokens)}}}}
+		p, err := object(providers, provider)
+		if err != nil {
+			return nil, err
+		}
+		mergeOwned(p, map[string]any{"npm": "@ai-sdk/openai-compatible", "options": map[string]any{"baseURL": e.BaseURL, "apiKey": "local-qwen-tunnel"}, "models": map[string]any{e.ID: map[string]any{"limit": map[string]any{"context": float64(e.ContextWindow), "output": float64(e.MaxTokens)}}}})
+		if p["name"] == nil {
+			p["name"] = "Sovereign Kit"
+		}
 	}
 	return out, nil
+}
+
+// mergeOwned changes only the explicitly supplied fields, preserving unrelated
+// options, headers, compatibility settings and model-specific metadata.
+func mergeOwned(destination, updates map[string]any) {
+	for key, value := range updates {
+		if patch, ok := value.(map[string]any); ok {
+			child, ok := destination[key].(map[string]any)
+			if !ok {
+				child = map[string]any{}
+				destination[key] = child
+			}
+			mergeOwned(child, patch)
+		} else {
+			destination[key] = value
+		}
+	}
 }
 func checkPackages(path string) error {
 	for _, p := range []struct{ name, version string }{{"pi-subagents", "0.62.0"}, {"oh-my-pi", "0.2.0"}} {
