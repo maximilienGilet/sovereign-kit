@@ -8,11 +8,15 @@ usage() {
 
 [[ $# -eq 1 && "$1" == "doctor" ]] || { usage; exit 64; }
 
-profile_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/profiles/sovereign/agent}"
+profile_dir="${PI_SOVEREIGN_DIR:-${PI_CODING_AGENT_DIR:-$HOME/.pi/profiles/sovereign/agent}}"
 opencode_config="${SOVEREIGN_OPENCODE_CONFIG:-$HOME/.config/opencode/sovereign.json}"
 endpoint="${SOVKIT_ENDPOINT_URL:-http://127.0.0.1:30000/v1/models}"
 failures=0
 warnings=0
+pi_configured=0
+opencode_configured=0
+[[ -e "$profile_dir" || -L "$profile_dir" ]] && pi_configured=1
+[[ -e "$opencode_config" || -L "$opencode_config" ]] && opencode_configured=1
 
 pass() { printf 'PASS  %s\n' "$1"; }
 warn() { printf 'WARN  %s\n' "$1"; warnings=$((warnings + 1)); }
@@ -22,10 +26,13 @@ printf 'Sovereign Kit doctor\n'
 printf 'Profile: %s\n' "$profile_dir"
 printf 'Endpoint: %s\n\n' "$endpoint"
 
+if [[ "$pi_configured" -eq 0 ]]; then
+  printf 'INFO  Pi integration not configured (optional); use sovkit start to inspect and set it up\n'
+else
 if [[ -r "$profile_dir/settings.json" && -r "$profile_dir/models.json" ]]; then
   pass 'Pi profile is readable'
 else
-  fail 'Pi profile is missing or unreadable; run install-macos.sh'
+  fail 'Pi profile is incomplete or unreadable; connect with sovkit start and inspect Pi setup'
 fi
 
 if [[ -r "$profile_dir/settings.json" && -r "$profile_dir/models.json" ]] && python3 - "$profile_dir" 2>/dev/null <<'PY'
@@ -57,7 +64,11 @@ if [[ -e "$profile_dir/npm/node_modules/pi-subagents" && -e "$profile_dir/npm/no
 else
   fail 'Pi extensions are missing; connect with sovkit start, inspect Pi, and confirm profile setup'
 fi
+fi
 
+if [[ "$opencode_configured" -eq 0 ]]; then
+  printf 'INFO  OpenCode integration not configured (optional); use sovkit start to inspect and set it up\n'
+else
 if [[ -r "$opencode_config" ]] && python3 - "$opencode_config" 2>/dev/null <<'PY'
 import json
 import pathlib
@@ -75,20 +86,27 @@ then
 else
   fail 'OpenCode configuration is missing or differs from the shipped sovereign configuration'
 fi
+fi
 
+if [[ "$pi_configured" -eq 1 ]]; then
 if command -v pi >/dev/null 2>&1; then
   pass "Pi is available ($(pi --version 2>/dev/null | head -n 1 || printf 'version unavailable'))"
 else
   fail 'Pi is not on PATH'
 fi
+fi
 
+if [[ "$opencode_configured" -eq 1 ]]; then
 if command -v opencode >/dev/null 2>&1; then
   pass "OpenCode is available ($(opencode --version 2>/dev/null | head -n 1 || printf 'version unavailable'))"
 else
-  warn 'OpenCode is not on PATH; install opencode-ai@1.18.25 to use opencode-sovereign'
+  fail 'OpenCode is not on PATH; install opencode-ai@1.18.25 to use this configured integration'
+fi
 fi
 
-if [[ -n "${PI_CODING_AGENT_DIR:-}" ]]; then
+if [[ -n "${PI_SOVEREIGN_DIR:-}" ]]; then
+  warn 'PI_SOVEREIGN_DIR overrides the standard Pi profile; inspect it before client work'
+elif [[ -n "${PI_CODING_AGENT_DIR:-}" ]]; then
   warn 'PI_CODING_AGENT_DIR overrides the standard Pi profile; inspect it before client work'
 fi
 if [[ -n "${SOVEREIGN_OPENCODE_CONFIG:-}" ]]; then
