@@ -8,7 +8,7 @@ RUN git init /src && git -C /src remote add origin https://github.com/ggml-org/l
     && git -C /src checkout --detach "$LLAMA_REVISION" \
     && test "$(git -C /src rev-parse HEAD)" = "$LLAMA_REVISION"
 RUN cmake -S /src -B /src/build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CUDA_ARCHITECTURES=120a -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_CUDA_ARCHITECTURES=120a -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF \
     && cmake --build /src/build -j 4 --target llama-server \
     && mkdir -p /out \
     && cp /src/build/bin/llama-server /out/llama-server \
