@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -56,20 +55,27 @@ type Dependencies struct {
 	ServerLauncher   ServerLauncher
 	Clock            Clock
 	SaveConfig       func(string, config.Config) error
+	PrepareIdentity  func(context.Context) error
 	ValidateIdentity func(string) error
 }
 
 type Options struct {
-	ConfigPath    string
-	IdentityFile  string
-	KnownHostsDir string
-	OfferLimit    int
-	PollInterval  time.Duration
-	PollTimeout   time.Duration
+	CheckpointPath   string
+	Resume           bool
+	ResumeInstanceID int
+	RecoveryOnly     bool
+	ConfigPath       string
+	IdentityFile     string
+	KnownHostsDir    string
+	AutoSelectOffer  bool
+	OfferLimit       int
+	PollInterval     time.Duration
+	PollTimeout      time.Duration
 }
 
 type OfferView struct {
 	Offer      vast.Offer
+	Recipe     recipe.Recipe
 	MonthlyUSD float64
 	AnnualUSD  float64
 }
@@ -80,6 +86,12 @@ type Result struct {
 }
 
 func RunVast(ctx context.Context, token string, r recipe.Recipe, options Options, deps Dependencies) (Result, error) {
+	if options.CheckpointPath != "" {
+		return runDurableVast(ctx, token, r, options, deps)
+	}
+	if options.Resume || options.ResumeInstanceID != 0 || options.RecoveryOnly {
+		return Result{}, fmt.Errorf("resume requires a checkpoint path")
+	}
 	if strings.TrimSpace(token) == "" {
 		return Result{}, fmt.Errorf("Vast API key is required")
 	}
@@ -88,9 +100,6 @@ func RunVast(ctx context.Context, token string, r recipe.Recipe, options Options
 	}
 	if deps.ValidateIdentity == nil {
 		return Result{}, fmt.Errorf("identity validator is required")
-	}
-	if err := deps.ValidateIdentity(options.IdentityFile); err != nil {
-		return Result{}, err
 	}
 	if deps.NewAPI == nil {
 		return Result{}, fmt.Errorf("Vast API constructor is required")
@@ -102,43 +111,28 @@ func RunVast(ctx context.Context, token string, r recipe.Recipe, options Options
 	if deps.Operator == nil {
 		return Result{}, fmt.Errorf("setup operator is required")
 	}
-	offers, err := api.SearchOffers(ctx, vast.SearchRequest{Limit: options.OfferLimit, MinimumVRAMGB: r.Requirements.MinimumVRAMGB})
+	notifyProgress(deps.Operator, ProgressSearching, 0)
+	selectedOfferView, err := chooseEligibleOffer(ctx, api, r, options.OfferLimit, deps.Operator, token)
 	if err != nil {
 		return Result{}, err
 	}
-	eligible := make([]vast.Offer, 0, len(offers))
-	for _, offer := range offers {
-		if offer.GPUVRAMGB >= float64(r.Requirements.MinimumVRAMGB) {
-			eligible = append(eligible, offer)
-		}
+	if selectedOfferView.Offer.PriceUnknown {
+		return Result{}, fmt.Errorf("selected Vast offer has unknown price and cannot be rented")
 	}
-	if len(eligible) == 0 {
-		return Result{}, fmt.Errorf("no eligible Vast offers found")
-	}
-	sort.SliceStable(eligible, func(i, j int) bool {
-		if eligible[i].HourlyUSD == eligible[j].HourlyUSD {
-			return eligible[i].ID < eligible[j].ID
-		}
-		return eligible[i].HourlyUSD < eligible[j].HourlyUSD
-	})
-	views := make([]OfferView, len(eligible))
-	for i, offer := range eligible {
-		views[i] = viewFor(offer)
-	}
-	selected, err := deps.Operator.SelectOffer(ctx, views)
-	if err != nil {
-		return Result{}, err
-	}
-	selectedView, ok := selectedView(views, selected.ID)
-	if !ok {
-		return Result{}, fmt.Errorf("selected Vast offer %d is not eligible", selected.ID)
-	}
-	confirmed, err := deps.Operator.ConfirmCost(ctx, selectedView, r.Requirements.MinimumDiskGB)
+	confirmed, err := deps.Operator.ConfirmCost(ctx, selectedOfferView, r.Requirements.MinimumDiskGB)
 	if err != nil {
 		return Result{}, err
 	}
 	if !confirmed {
 		return Result{}, fmt.Errorf("Vast setup cancelled: cost was not confirmed")
+	}
+	if deps.PrepareIdentity != nil {
+		if err := deps.PrepareIdentity(ctx); err != nil {
+			return Result{}, err
+		}
+	}
+	if err := deps.ValidateIdentity(options.IdentityFile); err != nil {
+		return Result{}, err
 	}
 	if deps.Clock == nil {
 		return Result{}, fmt.Errorf("clock is required")
@@ -149,11 +143,26 @@ func RunVast(ctx context.Context, token string, r recipe.Recipe, options Options
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	instanceID, err := api.CreateInstance(ctx, selectedView.Offer.ID, vast.CreateRequest{Image: r.Runtime.Image, DiskGB: r.Requirements.MinimumDiskGB, Label: "sovkit-" + r.ID})
+	notifyProgress(deps.Operator, ProgressCreating, 0)
+	instanceID, err := api.CreateInstance(ctx, selectedOfferView.Offer.ID, vast.CreateRequest{Image: r.Runtime.Image, DiskGB: r.Requirements.MinimumDiskGB, Label: "sovkit-" + r.ID})
 	if err != nil {
 		return Result{}, err
 	}
-	instance, err := waitForRunning(ctx, api, instanceID, options, deps.Clock)
+	if instanceID <= 0 {
+		return Result{}, fmt.Errorf("Vast did not return a positive instance ID")
+	}
+	return finishVast(ctx, token, r, options, deps, api, instanceID, nil)
+}
+
+func finishVast(ctx context.Context, token string, r recipe.Recipe, options Options, deps Dependencies, api VastAPI, instanceID int, checkpoint *Checkpoint) (Result, error) {
+	if destroyer, ok := api.(InstanceDestroyer); ok {
+		notifyRecovery(deps.Operator, newInstanceRecovery(instanceID, destroyer, options, deps.Clock))
+	}
+	notifyProgress(deps.Operator, ProgressCreated, instanceID)
+	notifyProgress(deps.Operator, ProgressWaiting, instanceID)
+	instance, err := waitForRunning(ctx, api, instanceID, options, deps.Clock, func(instance vast.Instance) {
+		notifyActivity(deps.Operator, instance, instanceID, deps.Clock.Now(), token)
+	})
 	if err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
@@ -161,7 +170,8 @@ func RunVast(ctx context.Context, token string, r recipe.Recipe, options Options
 	if err := ctx.Err(); err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
-	keys, err := deps.HostKeyScanner.Scan(ctx, instance.SSHHost, instance.SSHPort)
+	notifyProgress(deps.Operator, ProgressHostKeys, instanceID)
+	keys, err := waitForHostKeys(ctx, instance.SSHHost, instance.SSHPort, instanceID, deps)
 	if err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
@@ -171,7 +181,13 @@ func RunVast(ctx context.Context, token string, r recipe.Recipe, options Options
 	if err := ctx.Err(); err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
-	confirmed, err = deps.Operator.ConfirmHostKeys(ctx, keys.Fingerprints)
+	confirmed := false
+	if checkpoint != nil {
+		confirmed = checkpoint.trustMatches(instance, knownHostsPath, keys.Raw)
+	}
+	if !confirmed {
+		confirmed, err = deps.Operator.ConfirmHostKeys(ctx, keys.Fingerprints)
+	}
 	if err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
@@ -181,27 +197,61 @@ func RunVast(ctx context.Context, token string, r recipe.Recipe, options Options
 	if err := ctx.Err(); err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
-	if err := deps.TrustStore.Save(knownHostsPath, keys.Raw); err != nil {
-		return Result{}, paidInstanceError(instanceID, err)
+	// Reused trust is already persisted; raw keyscan ordering is not stable.
+	trustReused := checkpoint != nil && checkpoint.trustMatches(instance, knownHostsPath, keys.Raw)
+	if !trustReused {
+		if err := deps.TrustStore.Save(knownHostsPath, keys.Raw); err != nil {
+			return Result{}, paidInstanceError(instanceID, err)
+		}
+	}
+	if checkpoint != nil {
+		checkpoint.ApprovedHost, checkpoint.ApprovedPort, checkpoint.KnownHostsFile = instance.SSHHost, instance.SSHPort, knownHostsPath
+		checkpoint.HostKeysHash, checkpoint.Phase = hostKeysDigest(keys.Raw), "trusted"
+		if err := writeCheckpoint(options.CheckpointPath, *checkpoint); err != nil {
+			return Result{}, paidInstanceError(instanceID, err)
+		}
 	}
 	ssh := config.SSH{Host: instance.SSHHost, Port: instance.SSHPort, User: "root", IdentityFile: options.IdentityFile, KnownHostsFile: knownHostsPath}
 	if err := ctx.Err(); err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
-	if err := deps.ServerLauncher.Launch(ctx, ssh, r); err != nil {
-		return Result{}, paidInstanceError(instanceID, err)
+	notifyProgress(deps.Operator, ProgressLaunching, instanceID)
+	var launchErr error
+	if checkpoint != nil {
+		checkpoint.Phase = "launch-intent"
+		if err := writeCheckpoint(options.CheckpointPath, *checkpoint); err != nil {
+			return Result{}, paidInstanceError(instanceID, err)
+		}
+		if reconciler, ok := deps.ServerLauncher.(ServerReconciler); ok {
+			launchErr = reconciler.Reconcile(ctx, ssh, r)
+		} else {
+			launchErr = fmt.Errorf("safe server reconciliation is required for persistent deployments")
+		}
+	} else {
+		launchErr = deps.ServerLauncher.Launch(ctx, ssh, r)
+	}
+	if launchErr != nil {
+		return Result{}, paidInstanceError(instanceID, launchErr)
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
-	if err := deps.SaveConfig(options.ConfigPath, config.VastStudio(instanceID, instance.SSHHost, instance.SSHPort, options.IdentityFile, knownHostsPath)); err != nil {
+	notifyProgress(deps.Operator, ProgressSaving, instanceID)
+	cfg := config.VastStudio(instanceID, instance.SSHHost, instance.SSHPort, options.IdentityFile, knownHostsPath)
+	cfg.Model = config.Model{ID: r.Model.Repository, ContextWindow: r.Serve.ContextWindow, MaxTokens: r.Serve.MaxOutputTokens}
+	if err := deps.SaveConfig(options.ConfigPath, cfg); err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
+	}
+	if checkpoint != nil {
+		if err := removeCheckpoint(options.CheckpointPath); err != nil {
+			return Result{}, paidInstanceError(instanceID, err)
+		}
 	}
 	return Result{InstanceID: instanceID, ConfigPath: options.ConfigPath}, nil
 }
 
-func viewFor(offer vast.Offer) OfferView {
-	return OfferView{Offer: offer, MonthlyUSD: offer.HourlyUSD * 730, AnnualUSD: offer.HourlyUSD * 8760}
+func viewFor(offer vast.Offer, selectedRecipe recipe.Recipe) OfferView {
+	return OfferView{Offer: offer, Recipe: selectedRecipe, MonthlyUSD: offer.HourlyUSD * 730, AnnualUSD: offer.HourlyUSD * 8760}
 }
 
 func selectedView(views []OfferView, id int) (OfferView, bool) {
@@ -213,7 +263,7 @@ func selectedView(views []OfferView, id int) (OfferView, bool) {
 	return OfferView{}, false
 }
 
-func waitForRunning(ctx context.Context, api VastAPI, instanceID int, options Options, clock Clock) (vast.Instance, error) {
+func waitForRunning(ctx context.Context, api VastAPI, instanceID int, options Options, clock Clock, observed func(vast.Instance)) (vast.Instance, error) {
 	deadline := clock.Now().Add(options.PollTimeout)
 	for {
 		if err := ctx.Err(); err != nil {
@@ -223,6 +273,12 @@ func waitForRunning(ctx context.Context, api VastAPI, instanceID int, options Op
 		if err != nil {
 			return vast.Instance{}, err
 		}
+		if options.CheckpointPath != "" && instance.ID != instanceID {
+			return vast.Instance{}, fmt.Errorf("provider returned a different instance; refusing SSH connection")
+		}
+		if observed != nil {
+			observed(instance)
+		}
 		status := strings.ToLower(strings.TrimSpace(instance.Status))
 		switch status {
 		case "exited", "unknown", "offline":
@@ -231,10 +287,9 @@ func waitForRunning(ctx context.Context, api VastAPI, instanceID int, options Op
 			if strings.TrimSpace(instance.SSHHost) != "" && instance.SSHPort > 0 {
 				return instance, nil
 			}
+		case "", "loading", "creating", "queued", "starting":
 		default:
-			if status != "loading" && status != "creating" && status != "queued" && status != "starting" {
-				return vast.Instance{}, fmt.Errorf("Vast instance has unusable status %q", instance.Status)
-			}
+			return vast.Instance{}, fmt.Errorf("Vast instance has unusable status %q", instance.Status)
 		}
 		if !clock.Now().Before(deadline) {
 			return vast.Instance{}, fmt.Errorf("timed out waiting for Vast instance to become ready")

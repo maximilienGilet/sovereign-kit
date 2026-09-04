@@ -32,6 +32,21 @@ class SovkitDoctorTests(unittest.TestCase):
             "echo 'pi 0.84.2'\n",
         )
         self._fake_command("opencode", "#!/usr/bin/env bash\necho '1.18.25'\n")
+        # Doctor fixtures are explicit existing profiles, not installer side effects.
+        profile = self.home / ".pi/profiles/sovereign/agent"
+        profile.mkdir(parents=True)
+        settings = {"defaultProvider": "sovereign-qwen", "defaultModel": "owner/served-model", "subagents": {"modelScope": {"enforce": True, "strict": True, "allow": ["sovereign-qwen/*"]}}}
+        models = {"providers": {"sovereign-qwen": {"baseUrl": "http://127.0.0.1:30000/v1", "models": [{"id": "owner/served-model"}]}}}
+        (profile / "settings.json").write_text(json.dumps(settings))
+        (profile / "models.json").write_text(json.dumps(models))
+        (profile / "npm/node_modules/pi-subagents").mkdir(parents=True)
+        extension = profile / "npm/node_modules/oh-my-pi/dist/extension.js"
+        extension.parent.mkdir(parents=True)
+        extension.write_text("// fixture")
+        config = self.home / ".config/opencode/sovereign.json"
+        config.parent.mkdir(parents=True)
+        config.write_text(json.dumps({"model": "sovereign-qwen/owner/served-model", "enabled_providers": ["sovereign-qwen"], "provider": {"sovereign-qwen": {"options": {"baseURL": "http://127.0.0.1:30000/v1"}, "models": {"owner/served-model": {}}}}}))
+        self.existing_settings = (profile / "settings.json").read_bytes()
         result = subprocess.run(
             [str(REPO / "install-macos.sh")],
             text=True,
@@ -49,9 +64,13 @@ class SovkitDoctorTests(unittest.TestCase):
         command.write_text(content)
         command.chmod(0o755)
 
+    @property
+    def sovkit(self) -> Path:
+        return self.home / ".local/bin/sovkit"
+
     def run_doctor(self) -> subprocess.CompletedProcess[str]:
-        env = os.environ | {"HOME": str(self.home), "PATH": f"{self.bin_dir}:{os.environ['PATH']}"}
-        return subprocess.run([str(DOCTOR), "doctor"], text=True, capture_output=True, env=env, check=False)
+        env = os.environ | {"HOME": str(self.home), "PATH": f"{self.home / '.local/bin'}:{self.bin_dir}:{os.environ['PATH']}"}
+        return subprocess.run([str(self.sovkit), "doctor"], text=True, capture_output=True, env=env, check=False)
 
     def test_reports_local_configuration_and_missing_tunnel(self) -> None:
         result = self.run_doctor()
@@ -63,9 +82,10 @@ class SovkitDoctorTests(unittest.TestCase):
         self.assertIn("FAIL  Local endpoint", result.stdout)
         self.assertIn("sovkit-tunnel", result.stdout)
 
-    def test_installer_writes_a_single_fail_closed_route(self) -> None:
+    def test_installer_preserves_an_existing_fail_closed_route(self) -> None:
         profile = self.home / ".pi/profiles/sovereign/agent"
         settings = json.loads((profile / "settings.json").read_text())
+        self.assertEqual(self.existing_settings, (profile / "settings.json").read_bytes())
         models = json.loads((profile / "models.json").read_text())
         opencode = json.loads((self.home / ".config/opencode/sovereign.json").read_text())
         self.assertEqual("sovereign-qwen", settings["defaultProvider"])
@@ -73,12 +93,24 @@ class SovkitDoctorTests(unittest.TestCase):
         self.assertEqual(["sovereign-qwen"], list(models["providers"]))
         self.assertEqual("http://127.0.0.1:30000/v1", models["providers"]["sovereign-qwen"]["baseUrl"])
         self.assertEqual(["sovereign-qwen"], opencode["enabled_providers"])
-        self.assertEqual("sovereign-qwen/qwen3.8-27b-nvfp4", opencode["model"])
+        self.assertEqual("sovereign-qwen/owner/served-model", opencode["model"])
 
-    def test_installer_installs_the_sovkit_command(self) -> None:
-        command = self.home / ".local/bin/sovkit"
-        self.assertTrue(command.is_file())
-        self.assertTrue(os.access(command, os.X_OK))
+    def test_installer_installs_the_go_cli_and_doctor_helper(self) -> None:
+        self.assertTrue(self.sovkit.is_file())
+        self.assertTrue(os.access(self.sovkit, os.X_OK))
+        helper = self.home / ".local/bin/sovkit-doctor"
+        self.assertTrue(helper.is_file())
+        self.assertTrue(os.access(helper, os.X_OK))
+        result = subprocess.run(
+            [str(self.sovkit), "help"],
+            text=True,
+            capture_output=True,
+            env=os.environ | {"HOME": str(self.home), "PATH": f"{self.home / '.local/bin'}:{self.bin_dir}:{os.environ['PATH']}"},
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("setup", result.stdout)
+        self.assertIn("dashboard", result.stdout)
 
     def test_server_recipe_uses_a_digest_locked_image(self) -> None:
         image = (REPO / "server/image.lock").read_text().strip()

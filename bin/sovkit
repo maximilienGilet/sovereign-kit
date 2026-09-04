@@ -36,14 +36,15 @@ profile = pathlib.Path(sys.argv[1])
 settings = json.loads((profile / 'settings.json').read_text())
 models = json.loads((profile / 'models.json').read_text())
 assert settings['defaultProvider'] == 'sovereign-qwen'
-assert settings['defaultModel'] == 'qwen3.8-27b-nvfp4'
+model_id = settings['defaultModel']
+assert isinstance(model_id, str) and model_id.strip() == model_id and model_id
 assert settings['subagents']['modelScope'] == {
     'enforce': True, 'strict': True, 'allow': ['sovereign-qwen/*']
 }
 assert list(models['providers']) == ['sovereign-qwen']
 provider = models['providers']['sovereign-qwen']
 assert provider['baseUrl'] == 'http://127.0.0.1:30000/v1'
-assert provider['models'][0]['id'] == 'qwen3.8-27b-nvfp4'
+assert any(model['id'] == model_id for model in provider['models'])
 PY
 then
   pass 'Pi provider lock is intact'
@@ -54,7 +55,7 @@ fi
 if [[ -e "$profile_dir/npm/node_modules/pi-subagents" && -e "$profile_dir/npm/node_modules/oh-my-pi/dist/extension.js" ]]; then
   pass 'Pi extensions are installed'
 else
-  fail 'Pi extensions are missing; rerun install-macos.sh --upgrade'
+  fail 'Pi extensions are missing; connect with sovkit start, inspect Pi, and confirm profile setup'
 fi
 
 if [[ -r "$opencode_config" ]] && python3 - "$opencode_config" 2>/dev/null <<'PY'
@@ -63,10 +64,11 @@ import pathlib
 import sys
 path = pathlib.Path(sys.argv[1])
 config = json.loads(path.read_text())
-assert config['model'] == 'sovereign-qwen/qwen3.8-27b-nvfp4'
+assert config['model'].startswith('sovereign-qwen/')
 assert config['enabled_providers'] == ['sovereign-qwen']
 provider = config['provider']['sovereign-qwen']
 assert provider['options']['baseURL'] == 'http://127.0.0.1:30000/v1'
+assert config['model'].removeprefix('sovereign-qwen/') in provider['models']
 PY
 then
   pass 'OpenCode provider lock is intact'

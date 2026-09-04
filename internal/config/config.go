@@ -23,6 +23,15 @@ type Config struct {
 	Provider Provider `toml:"provider"`
 	Route    Route    `toml:"route"`
 	SSH      SSH      `toml:"ssh"`
+	Model    Model    `toml:"model,omitempty"`
+}
+
+// Model contains deployment-derived limits, usable only when discovery matches ID.
+// Zero values keep existing configurations valid and block profile installation.
+type Model struct {
+	ID            string `toml:"id,omitempty"`
+	ContextWindow int    `toml:"context_window,omitempty"`
+	MaxTokens     int    `toml:"max_tokens,omitempty"`
 }
 
 type Provider struct {
@@ -105,13 +114,22 @@ func Save(path string, cfg Config) error {
 		temporary.Close()
 		return err
 	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
 	if err := temporary.Close(); err != nil {
 		return err
 	}
 	if err := os.Rename(temporaryName, path); err != nil {
 		return err
 	}
-	return os.Chmod(path, 0o600)
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
 }
 
 func (cfg Config) Validate() error {

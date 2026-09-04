@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/maximilienGilet/sovereign-kit/internal/catalogui"
+	"github.com/maximilienGilet/sovereign-kit/internal/clientprofile"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
 	"github.com/maximilienGilet/sovereign-kit/internal/route"
 	"github.com/maximilienGilet/sovereign-kit/internal/setup"
@@ -47,12 +47,71 @@ type StartDependencies struct {
 	NewTunnel    func(context.Context, config.Config, io.Writer) (Tunnel, error)
 	Healthcheck  func(context.Context, string) error
 	RunDashboard func(io.Writer) error
+	Discover     func(context.Context, string, clientprofile.Metadata) clientprofile.Endpoint
 	Clock        setup.Clock
 	PollInterval time.Duration
 	PollTimeout  time.Duration
 }
 
 func Start(ctx context.Context, output io.Writer, configPath string, deps StartDependencies) error {
+	if deps.RunDashboard == nil {
+		return RunApplication(ctx, os.Stdin, output, configPath, "root", "start", ApplicationDependencies{Start: deps})
+	}
+	if output == nil {
+		output = io.Discard
+	}
+	tunnel, err := Connect(ctx, output, configPath, deps)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tunnel.Stop() }()
+	return deps.RunDashboard(output)
+}
+
+// StartHeadless owns only the local connection. Clients are launched explicitly
+// in another terminal; cancellation never destroys the remote instance.
+func StartHeadless(ctx context.Context, output io.Writer, configPath string, deps StartDependencies) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if output == nil {
+		output = io.Discard
+	}
+	tunnel, err := Connect(ctx, output, configPath, deps)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tunnel.Stop() }()
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
+	discover := deps.Discover
+	if discover == nil {
+		discover = clientprofile.Discover
+	}
+	endpoint := discover(ctx, fmt.Sprintf("http://%s:%d/v1", cfg.Route.LocalHost, cfg.Route.LocalPort), clientprofile.Metadata{ID: cfg.Model.ID, ContextWindow: cfg.Model.ContextWindow, MaxTokens: cfg.Model.MaxTokens})
+	if _, err := fmt.Fprintf(output, "Base URL: %s\nModel: %s\n", endpoint.BaseURL, endpoint.ID); err != nil {
+		return err
+	}
+	if endpoint.Problem != "" {
+		if _, err := fmt.Fprintln(output, endpoint.Problem); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(output, "Connection active. Launch your client explicitly in another terminal. Ctrl+C disconnects locally; remote instance billing may continue."); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-tunnel.Done():
+		return tunnelExitError(err)
+	}
+}
+
+// Connect returns a healthy running tunnel. The caller must stop it on success.
+func Connect(ctx context.Context, output io.Writer, configPath string, deps StartDependencies) (Tunnel, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -61,10 +120,10 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 	}
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return fmt.Errorf("load configuration: %w", err)
+		return nil, fmt.Errorf("load configuration: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	if deps.Clock == nil {
 		deps.Clock = setup.RealClock{}
@@ -81,36 +140,38 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 	if deps.Healthcheck == nil {
 		deps.Healthcheck = route.Healthcheck
 	}
-	if deps.RunDashboard == nil {
-		deps.RunDashboard = runDashboard
-	}
 
 	tunnel, err := deps.NewTunnel(ctx, cfg, output)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if tunnel == nil {
-		return errors.New("new tunnel returned nil tunnel")
+		return nil, errors.New("new tunnel returned nil tunnel")
 	}
 	if err := tunnel.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	defer func() { _ = tunnel.Stop() }()
+	owned := false
+	defer func() {
+		if !owned {
+			_ = tunnel.Stop()
+		}
+	}()
 
 	endpoint := fmt.Sprintf("http://%s:%d", cfg.Route.LocalHost, cfg.Route.LocalPort)
 	deadline := deps.Clock.Now().Add(deps.PollTimeout)
 	var lastHealthErr error
 	for {
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
 		select {
 		case tunnelErr := <-tunnel.Done():
-			return tunnelExitError(tunnelErr)
+			return nil, tunnelExitError(tunnelErr)
 		default:
 		}
 		if !deps.Clock.Now().Before(deadline) {
-			return healthTimeoutError(deps.PollTimeout, lastHealthErr)
+			return nil, healthTimeoutError(deps.PollTimeout, lastHealthErr)
 		}
 		remaining := deadline.Sub(deps.Clock.Now())
 		healthCtx, cancelHealth := context.WithCancel(ctx)
@@ -131,54 +192,55 @@ func Start(ctx context.Context, output io.Writer, configPath string, deps StartD
 			}
 			cancelHealth()
 			if err := ctx.Err(); err != nil {
-				return err
+				return nil, err
 			}
 			if timerExpired || !deps.Clock.Now().Before(deadline) {
-				return healthTimeoutError(deps.PollTimeout, healthErr)
+				return nil, healthTimeoutError(deps.PollTimeout, healthErr)
 			}
 			if healthErr == nil {
 				select {
 				case tunnelErr := <-tunnel.Done():
-					return tunnelExitError(tunnelErr)
+					return nil, tunnelExitError(tunnelErr)
 				default:
 				}
 				if _, err := fmt.Fprintln(output, "LIVE: endpoint healthy"); err != nil {
-					return err
+					return nil, err
 				}
-				return deps.RunDashboard(output)
+				owned = true
+				return tunnel, nil
 			}
 		case tunnelErr := <-tunnel.Done():
 			stopStartTimer(timer)
 			cancelHealth()
 			<-healthDone
-			return tunnelExitError(tunnelErr)
+			return nil, tunnelExitError(tunnelErr)
 		case <-ctx.Done():
 			stopStartTimer(timer)
 			cancelHealth()
 			<-healthDone
-			return ctx.Err()
+			return nil, ctx.Err()
 		case <-timer.C():
 			cancelHealth()
 			<-healthDone
-			return healthTimeoutError(deps.PollTimeout, lastHealthErr)
+			return nil, healthTimeoutError(deps.PollTimeout, lastHealthErr)
 		}
 		if healthErr == nil {
 			continue
 		}
 		lastHealthErr = healthErr
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
 		select {
 		case tunnelErr := <-tunnel.Done():
-			return tunnelExitError(tunnelErr)
+			return nil, tunnelExitError(tunnelErr)
 		default:
 		}
 		if !deps.Clock.Now().Before(deadline) {
-			return healthTimeoutError(deps.PollTimeout, lastHealthErr)
+			return nil, healthTimeoutError(deps.PollTimeout, lastHealthErr)
 		}
 		if err := deps.Clock.Sleep(ctx, deps.PollInterval); err != nil {
-			return err
+			return nil, err
 		}
 	}
 }
@@ -206,8 +268,8 @@ func healthTimeoutError(timeout time.Duration, last error) error {
 	return fmt.Errorf("healthcheck timed out after %s: %w", timeout, last)
 }
 
-func runDashboard(output io.Writer) error {
-	_, err := tea.NewProgram(catalogui.New(catalogui.DefaultEntries()), tea.WithOutput(output)).Run()
+func RunDashboard(input io.Reader, output io.Writer) error {
+	_, err := fmt.Fprintln(output, "Run sovkit start to open the connected endpoint dashboard. Integrations are optional and never launched automatically.")
 	return err
 }
 
