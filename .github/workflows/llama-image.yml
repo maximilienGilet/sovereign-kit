@@ -1,6 +1,11 @@
 name: Publish llama CUDA image
 on:
   workflow_dispatch:
+    inputs:
+      ssh_patch:
+        description: Reuse the pinned published runtime and only patch SSH startup
+        type: boolean
+        default: false
   push:
     branches: [feat/prebuilt-llama-runtime]
     paths: [server/llama/**, .github/workflows/llama-image.yml]
@@ -28,11 +33,18 @@ jobs:
         env:
           IMAGE: ghcr.io/maximiliengilet/sovereign-kit-llama
           SOURCE_SHA: ${{ github.sha }}
+          SSH_PATCH: ${{ inputs.ssh_patch }}
         run: |
-          docker build --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "$IMAGE:$SOURCE_SHA" server/llama
+          dockerfile=server/llama/Dockerfile
+          if [[ "$SSH_PATCH" == true ]]; then dockerfile=server/llama/Dockerfile.ssh-fix; fi
+          docker build -f "$dockerfile" --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "$IMAGE:$SOURCE_SHA" server/llama
           docker run --rm --entrypoint python3 "$IMAGE:$SOURCE_SHA" /opt/sovereign-kit/llama/smoke.py --cpu-only
           first=$(docker run --rm "$IMAGE:$SOURCE_SHA" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | tail -n 1 | awk '{print $2}')
           second=$(docker run --rm "$IMAGE:$SOURCE_SHA" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | tail -n 1 | awk '{print $2}')
+          [[ "$first" == SHA256:* && "$second" == SHA256:* && "$first" != "$second" ]]
+          # Exercise the actual failure mode: Vast bypasses our ENTRYPOINT.
+          first=$(docker run --rm --network none --entrypoint python3 --mount "type=bind,src=$PWD/server/llama/test_ssh_startup.py,dst=/tmp/test_ssh_startup.py,readonly" "$IMAGE:$SOURCE_SHA" /tmp/test_ssh_startup.py)
+          second=$(docker run --rm --network none --entrypoint python3 --mount "type=bind,src=$PWD/server/llama/test_ssh_startup.py,dst=/tmp/test_ssh_startup.py,readonly" "$IMAGE:$SOURCE_SHA" /tmp/test_ssh_startup.py)
           [[ "$first" == SHA256:* && "$second" == SHA256:* && "$first" != "$second" ]]
       - name: Publish verified image
         env:

@@ -24,6 +24,9 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 COPY --from=build /out/ /opt/sovereign-kit/llama/
 COPY smoke.py /opt/sovereign-kit/llama/smoke.py
 COPY entrypoint.sh /opt/sovereign-kit/llama/entrypoint.sh
+COPY sshd-wrapper.sh /opt/sovereign-kit/llama/sshd-wrapper.sh
+COPY install-sshd-wrapper.sh /opt/sovereign-kit/llama/install-sshd-wrapper.sh
+RUN sh /opt/sovereign-kit/llama/install-sshd-wrapper.sh
 RUN chmod 755 /opt/sovereign-kit/llama/entrypoint.sh \
     && test -x /opt/nvidia/nvidia_entrypoint.sh
 RUN python3 /opt/sovereign-kit/llama/smoke.py --cpu-only
