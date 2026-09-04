@@ -1,0 +1,43 @@
+name: Publish llama CUDA image
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/prebuilt-llama-runtime]
+    paths: [server/llama/**, .github/workflows/llama-image.yml]
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: llama-image
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Fetch exact public source
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: |
+          git init .
+          git remote add origin "https://github.com/${SOURCE_REPOSITORY}.git"
+          git fetch --depth 1 origin "$SOURCE_SHA"
+          git checkout --detach "$SOURCE_SHA"
+      - name: Build and check image
+        env:
+          IMAGE: ghcr.io/maximiliengilet/sovereign-kit-llama
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          docker build --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "$IMAGE:$SOURCE_SHA" server/llama
+          docker run --rm --entrypoint python3 "$IMAGE:$SOURCE_SHA" /opt/sovereign-kit/llama/smoke.py
+      - name: Publish verified image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          IMAGE: ghcr.io/maximiliengilet/sovereign-kit-llama
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker push "$IMAGE:$SOURCE_SHA"
+          docker logout ghcr.io
