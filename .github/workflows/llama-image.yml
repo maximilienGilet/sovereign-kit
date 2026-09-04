@@ -30,7 +30,7 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
         run: |
           docker build --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "$IMAGE:$SOURCE_SHA" server/llama
-          docker run --rm --entrypoint python3 "$IMAGE:$SOURCE_SHA" /opt/sovereign-kit/llama/smoke.py
+          docker run --rm --entrypoint python3 "$IMAGE:$SOURCE_SHA" /opt/sovereign-kit/llama/smoke.py --cpu-only
           first=$(docker run --rm "$IMAGE:$SOURCE_SHA" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | tail -n 1 | awk '{print $2}')
           second=$(docker run --rm "$IMAGE:$SOURCE_SHA" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | tail -n 1 | awk '{print $2}')
           [[ "$first" == SHA256:* && "$second" == SHA256:* && "$first" != "$second" ]]

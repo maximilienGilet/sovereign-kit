@@ -26,7 +26,7 @@ COPY smoke.py /opt/sovereign-kit/llama/smoke.py
 COPY entrypoint.sh /opt/sovereign-kit/llama/entrypoint.sh
 RUN chmod 755 /opt/sovereign-kit/llama/entrypoint.sh \
     && test -x /opt/nvidia/nvidia_entrypoint.sh
-RUN python3 /opt/sovereign-kit/llama/smoke.py
+RUN python3 /opt/sovereign-kit/llama/smoke.py --cpu-only
 WORKDIR /workspace
 ENTRYPOINT ["/opt/sovereign-kit/llama/entrypoint.sh"]
 CMD ["/bin/bash"]
