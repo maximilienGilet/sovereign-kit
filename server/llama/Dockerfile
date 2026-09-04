@@ -19,9 +19,14 @@ LABEL org.opencontainers.image.source="https://github.com/maximilienGilet/sovere
       org.opencontainers.image.description="Sovereign Kit llama.cpp CUDA 13.3 / Blackwell 120a / native MTP; no models or credentials"
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     python3 curl ca-certificates openssh-server util-linux libcurl4 libgomp1 \
+    && rm -f /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub \
     && mkdir -p /workspace /run/sshd
 COPY --from=build /out/ /opt/sovereign-kit/llama/
 COPY smoke.py /opt/sovereign-kit/llama/smoke.py
+COPY entrypoint.sh /opt/sovereign-kit/llama/entrypoint.sh
+RUN chmod 755 /opt/sovereign-kit/llama/entrypoint.sh \
+    && test -x /opt/nvidia/nvidia_entrypoint.sh
 RUN python3 /opt/sovereign-kit/llama/smoke.py
 WORKDIR /workspace
+ENTRYPOINT ["/opt/sovereign-kit/llama/entrypoint.sh"]
 CMD ["/bin/bash"]

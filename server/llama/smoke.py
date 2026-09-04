@@ -8,6 +8,8 @@ REVISION = '86b351fd64d5ebbf1ba795ffd60c8f4a8c958613'
 
 
 def check(root=ROOT):
+    if list(pathlib.Path('/etc/ssh').glob('ssh_host_*')):
+        raise RuntimeError('Image must not contain SSH host keys')
     if (root / 'source-revision').read_text().strip() != REVISION:
         raise RuntimeError('Unexpected llama.cpp source revision')
     for tool in ('python3', 'curl', 'flock', 'sshd'):
