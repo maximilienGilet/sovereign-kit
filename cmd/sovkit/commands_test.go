@@ -90,7 +90,7 @@ func TestFilterOffersByCapKeepsCheapAndKnown(t *testing.T) {
 	}
 }
 
-func TestParseMixedAcceptsFlagsEitherSideOfPositional(t *testing.T) {
+func TestParseFlagsAroundPositionalAcceptsFlagsEitherSide(t *testing.T) {
 	newSet := func() (*flag.FlagSet, *bool, *int) {
 		set := flag.NewFlagSet("test", flag.ContinueOnError)
 		set.SetOutput(io.Discard)
@@ -99,7 +99,7 @@ func TestParseMixedAcceptsFlagsEitherSideOfPositional(t *testing.T) {
 		return set, asJSON, limit
 	}
 	set, asJSON, limit := newSet()
-	positionals, err := parseMixed(set, []string{"qwen-solo", "--json", "--limit", "5"})
+	positionals, err := parseFlagsAroundPositional(set, []string{"qwen-solo", "--json", "--limit", "5"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestParseMixedAcceptsFlagsEitherSideOfPositional(t *testing.T) {
 		t.Fatalf("recipe-first: %q json=%v limit=%d", positionals, *asJSON, *limit)
 	}
 	set, asJSON, limit = newSet()
-	positionals, err = parseMixed(set, []string{"--json", "qwen-solo", "--limit", "5"})
+	positionals, err = parseFlagsAroundPositional(set, []string{"--json", "qwen-solo", "--limit", "5"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,13 +115,13 @@ func TestParseMixedAcceptsFlagsEitherSideOfPositional(t *testing.T) {
 		t.Fatalf("flag-first: %q json=%v limit=%d", positionals, *asJSON, *limit)
 	}
 	set, _, _ = newSet()
-	if _, err := parseMixed(set, []string{"--bogus"}); err == nil {
+	if _, err := parseFlagsAroundPositional(set, []string{"--bogus"}); err == nil {
 		t.Fatal("expected error for unknown flag")
 	}
 }
 
-func TestStringListAcceptsRepeatAndCommaValues(t *testing.T) {
-	var list stringList
+func TestCountryListAcceptsRepeatAndCommaValues(t *testing.T) {
+	var list countryList
 	if err := list.Set("FR"); err != nil {
 		t.Fatal(err)
 	}
@@ -208,6 +208,10 @@ func TestOffersRefusesInterruptibleForForbiddingRecipe(t *testing.T) {
 	err := runWith([]string{"offers", "qwen-solo-rtx5090", "--interruptible"}, &output, "missing")
 	if err == nil || !strings.Contains(err.Error(), "forbids interruptible") {
 		t.Fatalf("expected gate refusal, got %v", err)
+	}
+	var usage *usageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("expected usage error, got %T", err)
 	}
 }
 

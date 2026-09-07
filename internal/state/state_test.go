@@ -32,8 +32,8 @@ func testDeployment(id string) Deployment {
 		},
 		SSH: SSH{
 			Host: "ssh.vast.ai", Port: 22022, User: "root",
-			IdentityFile:   "deployments/" + id + "/identity",
-			KnownHostsFile: "deployments/" + id + "/known_hosts",
+			IdentityFile:   IdentityPath(".", id),
+			KnownHostsFile: KnownHostsPath(".", id),
 		},
 		Route:     Route{LocalHost: "127.0.0.1", LocalPort: 30000, RemoteHost: "127.0.0.1", RemotePort: 30000},
 		Spend:     Spend{HourlyUSD: 0.42, TotalUSD: 1.26},
@@ -322,5 +322,18 @@ func TestLayoutHelpers(t *testing.T) {
 	}
 	if filepath.Base(LegacyConfigPath(dir)) != "config.toml" {
 		t.Fatalf("legacy path = %q", LegacyConfigPath(dir))
+	}
+}
+
+func TestDeploymentPathHelpers(t *testing.T) {
+	dir := Dir(t.TempDir())
+	if got := DeploymentDir(dir, "x"); got != filepath.Join(dir, "deployments", "x") {
+		t.Fatalf("deployment dir = %q", got)
+	}
+	if got := IdentityPath(dir, "x"); got != filepath.Join(dir, "deployments", "x", "identity") {
+		t.Fatalf("identity path = %q", got)
+	}
+	if got := KnownHostsPath(dir, "x"); got != filepath.Join(dir, "deployments", "x", "known_hosts") {
+		t.Fatalf("known hosts path = %q", got)
 	}
 }

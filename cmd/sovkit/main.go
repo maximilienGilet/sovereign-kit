@@ -105,11 +105,11 @@ Commands:
 	}
 }
 
-// parseMixed parses flags that may appear before or after positional args.
+// parseFlagsAroundPositional parses flags that may appear before or after positional args.
 // The standard flag package stops at the first positional, so parse twice:
 // once for leading flags, then again for the remainder. Values starting
 // with a dash are not supported; none of the flags take such values.
-func parseMixed(set *flag.FlagSet, args []string) ([]string, error) {
+func parseFlagsAroundPositional(set *flag.FlagSet, args []string) ([]string, error) {
 	if err := set.Parse(args); err != nil {
 		return nil, err
 	}
@@ -124,12 +124,12 @@ func parseMixed(set *flag.FlagSet, args []string) ([]string, error) {
 	return append(positionals, set.Args()...), nil
 }
 
-// stringList accepts repeated flags and comma-separated values.
-type stringList []string
+// countryList accepts repeated --country flags and comma-separated codes.
+type countryList []string
 
-func (list *stringList) String() string { return strings.Join(*list, ",") }
+func (list *countryList) String() string { return strings.Join(*list, ",") }
 
-func (list *stringList) Set(value string) error {
+func (list *countryList) Set(value string) error {
 	for _, item := range strings.Split(value, ",") {
 		if trimmed := strings.TrimSpace(item); trimmed != "" {
 			*list = append(*list, trimmed)
@@ -138,8 +138,14 @@ func (list *stringList) Set(value string) error {
 	return nil
 }
 
-func stateDir(configPath string) string {
-	return filepath.Dir(configPath)
+// writeJSON marshals one result value to stdout.
+func writeJSON(output io.Writer, value any) error {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(output, string(encoded))
+	return err
 }
 
 func builtinRecipe(id string) (recipe.Recipe, error) {
@@ -171,7 +177,7 @@ func resolveGPUModel(resolved recipe.Recipe, flag string) (model string, strict 
 // interruptible offers for a recipe that forbids them.
 func resolveInterruptible(resolved recipe.Recipe, flag bool) (bool, error) {
 	if flag && !resolved.Requirements.AllowInterruptible {
-		return false, fmt.Errorf("recipe %q forbids interruptible offers", resolved.ID)
+		return false, usageErrorf("recipe %q forbids interruptible offers", resolved.ID)
 	}
 	return flag, nil
 }
@@ -219,12 +225,7 @@ func runRecipes(args []string, output io.Writer) error {
 		return err
 	}
 	if *asJSON {
-		encoded, err := json.MarshalIndent(list, "", "  ")
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(output, string(encoded))
-		return err
+		return writeJSON(output, list)
 	}
 	for _, item := range list {
 		fmt.Fprintf(output, "%s · %s\n  engine %s · %s · %s\n  %d× %s · ≥%dGB VRAM · ≥%dGB disk\n",
@@ -236,7 +237,7 @@ func runRecipes(args []string, output io.Writer) error {
 }
 
 func runOffers(args []string, output io.Writer, configPath string) error {
-	var countries stringList
+	var countries countryList
 	set := flag.NewFlagSet("offers", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	asJSON := set.Bool("json", false, "machine-readable output")
@@ -246,7 +247,7 @@ func runOffers(args []string, output io.Writer, configPath string) error {
 	interruptible := set.Bool("interruptible", false, "include interruptible (bid) offers")
 	capUSD := set.Float64("cap", 0, "max hourly USD (0 = state default)")
 	set.Var(&countries, "country", "country code filter, repeatable (e.g. FR)")
-	positionals, err := parseMixed(set, args)
+	positionals, err := parseFlagsAroundPositional(set, args)
 	if err != nil {
 		return usageErrorf("usage: sovkit offers <recipe> [--json] [--limit N] [--country CC] [--region R] [--gpu MODEL] [--interruptible] [--cap USD]")
 	}
@@ -265,7 +266,7 @@ func runOffers(args []string, output io.Writer, configPath string) error {
 	if err != nil {
 		return err
 	}
-	dir := stateDir(configPath)
+	dir := filepath.Dir(configPath)
 	store, err := state.Load(dir)
 	if err != nil {
 		return err
@@ -300,12 +301,7 @@ func runOffers(args []string, output io.Writer, configPath string) error {
 	}
 	recommendations := planner.Recommend(resolved, filterOffersByCap(offers, cap), monthlyHours)
 	if *asJSON {
-		encoded, err := json.MarshalIndent(recommendations, "", "  ")
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(output, string(encoded))
-		return err
+		return writeJSON(output, recommendations)
 	}
 	if len(recommendations) == 0 {
 		_, err := fmt.Fprintf(output, "No eligible offers for %s.\n", resolved.ID)
@@ -334,14 +330,14 @@ func runStatus(args []string, output io.Writer, configPath string) error {
 	set := flag.NewFlagSet("status", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	asJSON := set.Bool("json", false, "machine-readable output")
-	positionals, err := parseMixed(set, args)
+	positionals, err := parseFlagsAroundPositional(set, args)
 	if err != nil {
 		return usageErrorf("usage: sovkit status [id] [--json]")
 	}
 	if len(positionals) > 1 {
 		return usageErrorf("usage: sovkit status [id] [--json]")
 	}
-	dir := stateDir(configPath)
+	dir := filepath.Dir(configPath)
 	store, err := state.Load(dir)
 	if err != nil {
 		return err
@@ -361,12 +357,7 @@ func runStatus(args []string, output io.Writer, configPath string) error {
 		deployment = active
 	}
 	if *asJSON {
-		encoded, err := json.MarshalIndent(deployment, "", "  ")
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintln(output, string(encoded))
-		return err
+		return writeJSON(output, deployment)
 	}
 	cap := "none"
 	if deployment.CapUSD > 0 {
@@ -388,7 +379,7 @@ func runDoctor(output io.Writer, configPath string) error {
 	if handled, err := runInstalledDoctor(output); handled {
 		return err
 	}
-	dir := stateDir(configPath)
+	dir := filepath.Dir(configPath)
 	store, err := state.Load(dir)
 	if err != nil {
 		return err

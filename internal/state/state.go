@@ -156,6 +156,21 @@ func DeploymentsPath(dir string) string {
 	return filepath.Join(dir, "deployments")
 }
 
+// DeploymentDir returns the secret directory of one deployment.
+func DeploymentDir(dir, id string) string {
+	return filepath.Join(DeploymentsPath(dir), id)
+}
+
+// IdentityPath returns the private key file of one deployment.
+func IdentityPath(dir, id string) string {
+	return filepath.Join(DeploymentDir(dir, id), "identity")
+}
+
+// KnownHostsPath returns the pinned host-key file of one deployment.
+func KnownHostsPath(dir, id string) string {
+	return filepath.Join(DeploymentDir(dir, id), "known_hosts")
+}
+
 // LegacyConfigPath returns the superseded single-route config file. It is
 // never read, only detected to warn.
 func LegacyConfigPath(dir string) string {
