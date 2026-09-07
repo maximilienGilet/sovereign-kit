@@ -25,6 +25,8 @@ type SearchRequest struct {
 	StrictGPU     bool
 	MinimumVRAMGB int
 	MinimumDiskGB int
+	// Interruptible searches bid (interruptible) offers instead of on-demand.
+	Interruptible bool
 }
 
 type Offer struct {
@@ -128,9 +130,13 @@ func (client *Client) SearchOffers(ctx context.Context, request SearchRequest) (
 	if client.token == "" {
 		return nil, fmt.Errorf("Vast API token is required")
 	}
+	offerType := "ondemand"
+	if request.Interruptible {
+		offerType = "bid"
+	}
 	payload := map[string]any{
 		"limit":      request.Limit,
-		"type":       "ondemand",
+		"type":       offerType,
 		"verified":   map[string]bool{"eq": true},
 		"rentable":   map[string]bool{"eq": true},
 		"rented":     map[string]bool{"eq": false},

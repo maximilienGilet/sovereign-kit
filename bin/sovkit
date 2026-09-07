@@ -27,12 +27,12 @@ printf 'Profile: %s\n' "$profile_dir"
 printf 'Endpoint: %s\n\n' "$endpoint"
 
 if [[ "$pi_configured" -eq 0 ]]; then
-  printf 'INFO  Pi integration not configured (optional); use sovkit start to inspect and set it up\n'
+  printf 'INFO  Pi integration not configured (optional); use sovkit up to provision a route\n'
 else
 if [[ -r "$profile_dir/settings.json" && -r "$profile_dir/models.json" ]]; then
   pass 'Pi profile is readable'
 else
-  fail 'Pi profile is incomplete or unreadable; connect with sovkit start and inspect Pi setup'
+  fail 'Pi profile is incomplete or unreadable; connect with sovkit up and inspect Pi setup'
 fi
 
 if [[ -r "$profile_dir/settings.json" && -r "$profile_dir/models.json" ]] && python3 - "$profile_dir" 2>/dev/null <<'PY'
@@ -62,12 +62,12 @@ fi
 if [[ -e "$profile_dir/npm/node_modules/pi-subagents" && -e "$profile_dir/npm/node_modules/oh-my-pi/dist/extension.js" ]]; then
   pass 'Pi extensions are installed'
 else
-  fail 'Pi extensions are missing; connect with sovkit start, inspect Pi, and confirm profile setup'
+  fail 'Pi extensions are missing; connect with sovkit up, inspect Pi, and confirm profile setup'
 fi
 fi
 
 if [[ "$opencode_configured" -eq 0 ]]; then
-  printf 'INFO  OpenCode integration not configured (optional); use sovkit start to inspect and set it up\n'
+  printf 'INFO  OpenCode integration not configured (optional); use sovkit up to provision a route\n'
 else
 if [[ -r "$opencode_config" ]] && python3 - "$opencode_config" 2>/dev/null <<'PY'
 import json

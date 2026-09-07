@@ -68,11 +68,12 @@ type Serve struct {
 }
 
 type Requirements struct {
-	GPUModel      string `toml:"gpu_model"`
-	GPUCount      int    `toml:"gpu_count"`
-	StrictGPU     bool   `toml:"strict_gpu"`
-	MinimumVRAMGB int    `toml:"minimum_vram_gb"`
-	MinimumDiskGB int    `toml:"minimum_disk_gb"`
+	GPUModel           string `toml:"gpu_model"`
+	GPUCount           int    `toml:"gpu_count"`
+	StrictGPU          bool   `toml:"strict_gpu"`
+	MinimumVRAMGB      int    `toml:"minimum_vram_gb"`
+	MinimumDiskGB      int    `toml:"minimum_disk_gb"`
+	AllowInterruptible bool   `toml:"allow_interruptible"`
 }
 
 func Load(path string) (Recipe, error) {

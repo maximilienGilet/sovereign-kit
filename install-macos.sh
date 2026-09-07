@@ -39,5 +39,4 @@ install -m 700 "$repo_dir/bin/opencode-sovereign" "$bin_dir/opencode-sovereign"
 
 printf 'Installed Sovereign Kit CLI in: %s\n' "$bin_dir"
 printf 'Existing Pi and OpenCode profiles were not changed.\n'
-printf '\nEnsure ~/.local/bin is on PATH, then run sovkit setup or sovkit start.\n'
-printf 'The connected dashboard discovers your model. Select an optional integration to inspect and explicitly confirm its profile setup.\n'
+printf '\nEnsure ~/.local/bin is on PATH, then run sovkit up to provision a private route.\n'

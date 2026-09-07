@@ -2,21 +2,39 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
-	"syscall"
+	"strings"
 	"time"
 
-	"github.com/maximilienGilet/sovereign-kit/internal/cli"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
+	"github.com/maximilienGilet/sovereign-kit/internal/planner"
+	"github.com/maximilienGilet/sovereign-kit/internal/recipe"
 	"github.com/maximilienGilet/sovereign-kit/internal/route"
-	"github.com/maximilienGilet/sovereign-kit/internal/setup"
+	"github.com/maximilienGilet/sovereign-kit/internal/state"
+	"github.com/maximilienGilet/sovereign-kit/internal/vast"
+	"github.com/maximilienGilet/sovereign-kit/recipes"
 )
+
+// vastAPIBaseURL is a variable so tests can point the CLI at a fake server.
+var vastAPIBaseURL = "https://console.vast.ai"
+
+// monthlyHours is the calendar-month base for cost projections.
+const monthlyHours = 730
+
+type usageError struct{ msg string }
+
+func (err *usageError) Error() string { return err.msg }
+
+func usageErrorf(format string, args ...any) *usageError {
+	return &usageError{msg: fmt.Sprintf(format, args...)}
+}
 
 type doctorExitError struct {
 	code int
@@ -26,18 +44,31 @@ func (err *doctorExitError) Error() string {
 	return fmt.Sprintf("doctor exited with status %d", err.code)
 }
 
+// exitCode maps errors to the CLI contract: 0 success, 1 operational
+// failure, 2 usage error. The installed doctor helper keeps its own code.
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var doctorExit *doctorExitError
+	if errors.As(err, &doctorExit) {
+		return doctorExit.code
+	}
+	var usage *usageError
+	if errors.As(err, &usage) {
+		return 2
+	}
+	return 1
+}
+
 func main() {
 	path, err := defaultConfigPath()
 	if err == nil {
 		err = runWith(os.Args[1:], os.Stdout, path)
 	}
 	if err != nil {
-		var doctorExit *doctorExitError
-		if errors.As(err, &doctorExit) {
-			os.Exit(doctorExit.code)
-		}
 		fmt.Fprintln(os.Stderr, "sovkit:", err)
-		os.Exit(2)
+		os.Exit(exitCode(err))
 	}
 }
 
@@ -54,51 +85,326 @@ func runWith(args []string, output io.Writer, configPath string) error {
 		_, err := fmt.Fprintln(output, `Usage: sovkit <command>
 
 Commands:
-  start       Connect the private tunnel and wait for a healthy route
-  tunnel      Start the private SSH loopback tunnel
+  recipes     List the embedded recipes
+  offers      Search eligible Vast offers for a recipe (no renting)
+  status      Show a deployment (the active one by default)
   doctor      Check the local route health`)
 		return err
 	}
 	switch args[0] {
-	case "start":
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer cancel()
-		return cli.StartHeadless(ctx, output, configPath, cli.StartDependencies{
-			Healthcheck:  route.Healthcheck,
-			Clock:        setup.RealClock{},
-			PollInterval: 5 * time.Second,
-			PollTimeout:  30 * time.Minute,
-		})
-	case "tunnel":
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			return fmt.Errorf("load configuration: %w", err)
-		}
-		command, err := route.Command(cfg)
-		if err != nil {
-			return err
-		}
-		command.Stdout, command.Stderr = output, output
-		return command.Run()
+	case "recipes":
+		return runRecipes(args[1:], output)
+	case "offers":
+		return runOffers(args[1:], output, configPath)
+	case "status":
+		return runStatus(args[1:], output, configPath)
 	case "doctor":
-		if handled, err := runInstalledDoctor(output); handled {
+		return runDoctor(output, configPath)
+	default:
+		return usageErrorf("unknown command %q (try: sovkit help)", args[0])
+	}
+}
+
+// parseMixed parses flags that may appear before or after positional args.
+// The standard flag package stops at the first positional, so parse twice:
+// once for leading flags, then again for the remainder. Values starting
+// with a dash are not supported; none of the flags take such values.
+func parseMixed(set *flag.FlagSet, args []string) ([]string, error) {
+	if err := set.Parse(args); err != nil {
+		return nil, err
+	}
+	rest := set.Args()
+	if len(rest) == 0 {
+		return nil, nil
+	}
+	positionals := []string{rest[0]}
+	if err := set.Parse(rest[1:]); err != nil {
+		return nil, err
+	}
+	return append(positionals, set.Args()...), nil
+}
+
+// stringList accepts repeated flags and comma-separated values.
+type stringList []string
+
+func (list *stringList) String() string { return strings.Join(*list, ",") }
+
+func (list *stringList) Set(value string) error {
+	for _, item := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			*list = append(*list, trimmed)
+		}
+	}
+	return nil
+}
+
+func stateDir(configPath string) string {
+	return filepath.Dir(configPath)
+}
+
+func builtinRecipe(id string) (recipe.Recipe, error) {
+	list, err := recipes.Builtin()
+	if err != nil {
+		return recipe.Recipe{}, err
+	}
+	for _, candidate := range list {
+		if candidate.ID == id {
+			return candidate, nil
+		}
+	}
+	return recipe.Recipe{}, usageErrorf("unknown recipe %q (try: sovkit recipes)", id)
+}
+
+// resolveGPUModel applies the recipe floor: flags narrow only. A --gpu flag
+// against a strict recipe must name the same model or it is refused.
+func resolveGPUModel(resolved recipe.Recipe, flag string) (model string, strict bool, err error) {
+	if flag == "" {
+		return resolved.Requirements.GPUModel, resolved.Requirements.StrictGPU, nil
+	}
+	if resolved.Requirements.StrictGPU && flag != resolved.Requirements.GPUModel {
+		return "", false, usageErrorf("recipe %q requires exactly %q (strict); cannot search %q", resolved.ID, resolved.Requirements.GPUModel, flag)
+	}
+	return flag, true, nil
+}
+
+// resolveInterruptible enforces the double gate: the flag alone never pulls
+// interruptible offers for a recipe that forbids them.
+func resolveInterruptible(resolved recipe.Recipe, flag bool) (bool, error) {
+	if flag && !resolved.Requirements.AllowInterruptible {
+		return false, fmt.Errorf("recipe %q forbids interruptible offers", resolved.ID)
+	}
+	return flag, nil
+}
+
+// filterOffersByCap drops offers above the hourly cap. Unknown prices fail
+// closed: an unverifiable price cannot prove it fits the cap.
+func filterOffersByCap(offers []vast.Offer, maxHourly float64) []vast.Offer {
+	if maxHourly <= 0 {
+		return offers
+	}
+	kept := make([]vast.Offer, 0, len(offers))
+	for _, offer := range offers {
+		if offer.PriceUnknown || offer.HourlyUSD > maxHourly {
+			continue
+		}
+		kept = append(kept, offer)
+	}
+	return kept
+}
+
+// legacyHint notes the superseded single-route config when the store is
+// empty, so old setups learn the way forward.
+func legacyHint(dir string, store state.Store) string {
+	if len(store.Deployments) > 0 {
+		return ""
+	}
+	if _, err := os.Stat(state.LegacyConfigPath(dir)); err == nil {
+		return " Legacy config.toml found: re-provision with sovkit up."
+	}
+	return ""
+}
+
+func runRecipes(args []string, output io.Writer) error {
+	set := flag.NewFlagSet("recipes", flag.ContinueOnError)
+	set.SetOutput(io.Discard)
+	asJSON := set.Bool("json", false, "machine-readable output")
+	if err := set.Parse(args); err != nil {
+		return usageErrorf("usage: sovkit recipes [--json]")
+	}
+	if set.NArg() > 0 {
+		return usageErrorf("usage: sovkit recipes [--json]")
+	}
+	list, err := recipes.Builtin()
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		encoded, err := json.MarshalIndent(list, "", "  ")
+		if err != nil {
 			return err
 		}
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			return fmt.Errorf("load configuration: %w", err)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		endpoint := fmt.Sprintf("http://%s:%d", cfg.Route.LocalHost, cfg.Route.LocalPort)
-		if err := route.Healthcheck(ctx, endpoint); err != nil {
-			return fmt.Errorf("local route %s is unavailable: %w", endpoint, err)
-		}
-		_, err = fmt.Fprintf(output, "PASS  local route answered %s/v1/models\n", endpoint)
+		_, err = fmt.Fprintln(output, string(encoded))
 		return err
-	default:
-		return fmt.Errorf("unknown command %q (try: sovkit help)", args[0])
 	}
+	for _, item := range list {
+		fmt.Fprintf(output, "%s · %s\n  engine %s · %s · %s\n  %d× %s · ≥%dGB VRAM · ≥%dGB disk\n",
+			item.ID, item.Name, item.Runtime.Engine, item.Kind, item.Profile.Status,
+			item.Requirements.GPUCount, item.Requirements.GPUModel,
+			item.Requirements.MinimumVRAMGB, item.Requirements.MinimumDiskGB)
+	}
+	return nil
+}
+
+func runOffers(args []string, output io.Writer, configPath string) error {
+	var countries stringList
+	set := flag.NewFlagSet("offers", flag.ContinueOnError)
+	set.SetOutput(io.Discard)
+	asJSON := set.Bool("json", false, "machine-readable output")
+	limit := set.Int("limit", 20, "max offers to list (1-100)")
+	region := set.String("region", "", "geographic region filter (e.g. europe)")
+	gpu := set.String("gpu", "", "GPU model filter (narrows only)")
+	interruptible := set.Bool("interruptible", false, "include interruptible (bid) offers")
+	capUSD := set.Float64("cap", 0, "max hourly USD (0 = state default)")
+	set.Var(&countries, "country", "country code filter, repeatable (e.g. FR)")
+	positionals, err := parseMixed(set, args)
+	if err != nil {
+		return usageErrorf("usage: sovkit offers <recipe> [--json] [--limit N] [--country CC] [--region R] [--gpu MODEL] [--interruptible] [--cap USD]")
+	}
+	if len(positionals) != 1 {
+		return usageErrorf("usage: sovkit offers <recipe> [--json] [--limit N] [--country CC] [--region R] [--gpu MODEL] [--interruptible] [--cap USD]")
+	}
+	resolved, err := builtinRecipe(positionals[0])
+	if err != nil {
+		return err
+	}
+	model, strict, err := resolveGPUModel(resolved, *gpu)
+	if err != nil {
+		return err
+	}
+	bid, err := resolveInterruptible(resolved, *interruptible)
+	if err != nil {
+		return err
+	}
+	dir := stateDir(configPath)
+	store, err := state.Load(dir)
+	if err != nil {
+		return err
+	}
+	cap := *capUSD
+	if cap <= 0 {
+		cap = store.Settings.SpendCapUSD
+	}
+	codes, err := vast.GeographicCountries(*region, countries)
+	if err != nil {
+		return usageErrorf("invalid geography: %v", err)
+	}
+	token, err := state.Token(dir)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	offers, err := vast.NewClient(vastAPIBaseURL, token).SearchOffers(ctx, vast.SearchRequest{
+		Countries:     codes,
+		Sort:          vast.SortPrice,
+		Limit:         *limit,
+		GPUModel:      model,
+		GPUCount:      resolved.Requirements.GPUCount,
+		StrictGPU:     strict,
+		MinimumVRAMGB: resolved.Requirements.MinimumVRAMGB,
+		MinimumDiskGB: resolved.Requirements.MinimumDiskGB,
+		Interruptible: bid,
+	})
+	if err != nil {
+		return err
+	}
+	recommendations := planner.Recommend(resolved, filterOffersByCap(offers, cap), monthlyHours)
+	if *asJSON {
+		encoded, err := json.MarshalIndent(recommendations, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(output, string(encoded))
+		return err
+	}
+	if len(recommendations) == 0 {
+		_, err := fmt.Fprintf(output, "No eligible offers for %s.\n", resolved.ID)
+		return err
+	}
+	fmt.Fprintln(output, "#  ID  $/H  $/MO  GPU  LOCATION  DOWN/UP  REL  DRIVER")
+	for index, recommendation := range recommendations {
+		offer := recommendation.Offer
+		price, monthly := "unknown", "unknown"
+		if !offer.PriceUnknown {
+			price = fmt.Sprintf("%.4g", offer.HourlyUSD)
+			monthly = fmt.Sprintf("%.0f", recommendation.MonthlyUSD)
+		}
+		reliability := "unknown"
+		if !offer.ReliabilityUnknown {
+			reliability = fmt.Sprintf("%.1f%%", offer.Reliability*100)
+		}
+		fmt.Fprintf(output, "%d  %d  %s  %s  %d× %s  %s  %.0f/%.0f  %s  %s\n",
+			index+1, offer.ID, price, monthly, offer.GPUCount, offer.GPUName,
+			offer.Location, offer.InetDownMBps, offer.InetUpMBps, reliability, offer.DriverVersion)
+	}
+	return nil
+}
+
+func runStatus(args []string, output io.Writer, configPath string) error {
+	set := flag.NewFlagSet("status", flag.ContinueOnError)
+	set.SetOutput(io.Discard)
+	asJSON := set.Bool("json", false, "machine-readable output")
+	positionals, err := parseMixed(set, args)
+	if err != nil {
+		return usageErrorf("usage: sovkit status [id] [--json]")
+	}
+	if len(positionals) > 1 {
+		return usageErrorf("usage: sovkit status [id] [--json]")
+	}
+	dir := stateDir(configPath)
+	store, err := state.Load(dir)
+	if err != nil {
+		return err
+	}
+	var deployment state.Deployment
+	if len(positionals) == 1 {
+		found, ok := store.Get(positionals[0])
+		if !ok {
+			return fmt.Errorf("unknown deployment %q", positionals[0])
+		}
+		deployment = found
+	} else {
+		active, ok := store.ActiveDeployment()
+		if !ok {
+			return fmt.Errorf("no active deployment.%s", legacyHint(dir, store))
+		}
+		deployment = active
+	}
+	if *asJSON {
+		encoded, err := json.MarshalIndent(deployment, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(output, string(encoded))
+		return err
+	}
+	cap := "none"
+	if deployment.CapUSD > 0 {
+		cap = fmt.Sprintf("$%.4g/h", deployment.CapUSD)
+	}
+	fmt.Fprintf(output, `%s · %s
+  recipe %s · instance %d (%s)
+  route http://%s:%d
+  spend $%.4g/h · $%.2f total · cap %s
+`,
+		deployment.ID, deployment.State, deployment.RecipeID,
+		deployment.Instance.ID, deployment.Instance.Status,
+		deployment.Route.LocalHost, deployment.Route.LocalPort,
+		deployment.Spend.HourlyUSD, deployment.Spend.TotalUSD, cap)
+	return nil
+}
+
+func runDoctor(output io.Writer, configPath string) error {
+	if handled, err := runInstalledDoctor(output); handled {
+		return err
+	}
+	dir := stateDir(configPath)
+	store, err := state.Load(dir)
+	if err != nil {
+		return err
+	}
+	deployment, ok := store.ActiveDeployment()
+	if !ok {
+		return fmt.Errorf("no active deployment.%s", legacyHint(dir, store))
+	}
+	endpoint := fmt.Sprintf("http://%s:%d", deployment.Route.LocalHost, deployment.Route.LocalPort)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := route.Healthcheck(ctx, endpoint); err != nil {
+		return fmt.Errorf("local route %s is unavailable: %w", endpoint, err)
+	}
+	_, err = fmt.Fprintf(output, "PASS  local route answered %s/v1/models\n", endpoint)
+	return err
 }
 
 func runInstalledDoctor(output io.Writer) (bool, error) {

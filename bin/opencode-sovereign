@@ -4,7 +4,7 @@ set -euo pipefail
 
 config="${SOVEREIGN_OPENCODE_CONFIG:-$HOME/.config/opencode/sovereign.json}"
 if [[ ! -r "$config" ]]; then
-  printf 'Missing OpenCode sovereign config: %s\nConnect with sovkit start, select OpenCode, and confirm profile setup.\n' "$config" >&2
+  printf 'Missing OpenCode sovereign config: %s\nConnect with sovkit up and confirm profile setup.\n' "$config" >&2
   exit 66
 fi
 if ! command -v opencode >/dev/null 2>&1; then

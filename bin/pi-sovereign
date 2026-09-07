@@ -15,10 +15,10 @@ try:
     elif len(ids) == 1:
         selected = next(iter(ids))
     else:
-        raise ValueError('Choose a registered model using SOVKIT_MODEL, or copy the command from sovkit start')
+        raise ValueError('Choose a registered model using SOVKIT_MODEL, or copy the command from sovkit up')
     print(selected)
 except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
-    print('Pi provider unavailable: '+str(error)+'. Configure Pi from sovkit start.', file=sys.stderr)
+    print('Pi provider unavailable: '+str(error)+'. Configure Pi from sovkit up.', file=sys.stderr)
     sys.exit(66)
 PY
 )"

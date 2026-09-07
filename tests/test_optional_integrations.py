@@ -101,5 +101,5 @@ class OptionalIntegrationTests(unittest.TestCase):
     def test_missing_opencode_profile_points_to_connected_setup(self):
         result = subprocess.run([str(self.bin / "opencode-sovereign")], env=self.env, text=True, capture_output=True)
         self.assertEqual(66, result.returncode)
-        self.assertIn("sovkit start", result.stderr)
+        self.assertIn("sovkit up", result.stderr)
         self.assertNotIn("install-macos.sh", result.stderr)

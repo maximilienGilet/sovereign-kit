@@ -109,8 +109,9 @@ class SovkitDoctorTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("start", result.stdout)
-        self.assertIn("tunnel", result.stdout)
+        self.assertIn("recipes", result.stdout)
+        self.assertIn("offers", result.stdout)
+        self.assertIn("status", result.stdout)
         self.assertIn("doctor", result.stdout)
         self.assertNotIn("dashboard", result.stdout)
 
