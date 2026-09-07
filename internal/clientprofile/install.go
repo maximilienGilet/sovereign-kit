@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 // Install requires the exact inspection shown at confirmation. Managed files are
@@ -32,6 +31,11 @@ func (s Service) Install(ctx context.Context, t Target, e Endpoint, confirmed In
 			return fail(fmt.Errorf("install Pi CLI separately before configuring this profile: %w", err))
 		}
 	}
+	if t.Kind == OMP {
+		if err := s.lookup("omp"); err != nil {
+			return fail(fmt.Errorf("install standalone Oh My Pi CLI separately: %w", err))
+		}
+	}
 	parent := filepath.Dir(t.Path)
 	if err := safePath(parent); err != nil {
 		return fail(err)
@@ -45,7 +49,7 @@ func (s Service) Install(ctx context.Context, t Target, e Endpoint, confirmed In
 	}
 	defer os.RemoveAll(stage)
 	stageTarget := Target{Kind: t.Kind, Path: stage}
-	if t.Kind == OpenCode {
+	if t.Kind != Pi {
 		stageTarget.Path = filepath.Join(stage, filepath.Base(t.Path))
 	}
 	for _, name := range managed(t) {
@@ -57,16 +61,12 @@ func (s Service) Install(ctx context.Context, t Target, e Endpoint, confirmed In
 			return fail(err)
 		}
 	}
-	// Validate confinement again against the staging root before reading staged
-	// configuration or allowing a package manager to follow any copied links.
+	// Validate confinement again before reading the staged configuration.
 	if _, err := snapshot(ctx, stageTarget); err != nil {
 		return fail(fmt.Errorf("unsafe staged profile: %w", err))
 	}
 	originals := map[string]map[string]any{}
 	names := managed(t)
-	if t.Kind == Pi {
-		names = names[:2]
-	}
 	for _, name := range names {
 		v, err := readObject(filepath.Join(stage, name))
 		if err == nil {
@@ -81,6 +81,9 @@ func (s Service) Install(ctx context.Context, t Target, e Endpoint, confirmed In
 	}
 	for name, v := range rendered {
 		raw, err := json.MarshalIndent(v, "", "  ")
+		if t.Kind == OMP && filepath.Ext(name) != ".json" {
+			raw, err = renderYAMLProvider(filepath.Join(stage, name), v)
+		}
 		if err != nil {
 			return fail(err)
 		}
@@ -88,24 +91,7 @@ func (s Service) Install(ctx context.Context, t Target, e Endpoint, confirmed In
 			return fail(err)
 		}
 	}
-	run := s.Run
-	if run == nil {
-		run = runPackage
-	}
-	installCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-	if t.Kind == Pi {
-		if err := checkPackages(stage); err != nil {
-			for _, p := range packages {
-				if _, err := snapshot(installCtx, stageTarget); err != nil {
-					return fail(fmt.Errorf("unsafe staged package links: %w", err))
-				}
-				if err = run(installCtx, "pi", []string{"install", p}, []string{"PI_CODING_AGENT_DIR=" + stage}); err != nil {
-					return fail(fmt.Errorf("package installation failed: %w", err))
-				}
-			}
-		}
-	} else if s.lookup("opencode") != nil {
+	if t.Kind == OpenCode && s.lookup("opencode") != nil {
 		// A global package install would modify unrelated packages. Require the
 		// pinned CLI separately, rather than silently expanding profile consent.
 		return fail(fmt.Errorf("OpenCode CLI missing; install opencode-ai@1.18.25 separately, then retry"))
@@ -117,7 +103,7 @@ func (s Service) Install(ctx context.Context, t Target, e Endpoint, confirmed In
 	if verified.State != Ready {
 		return fail(fmt.Errorf("staged profile verification failed: %s", verified.Detail))
 	}
-	// Detect edits (including dependency changes) made while package work ran.
+	// Detect managed-file edits made while staging and verification ran.
 	current := s.Inspect(ctx, t, e)
 	if current.Fingerprint != fresh.Fingerprint || current.State != fresh.State {
 		return fail(fmt.Errorf("profile changed during installation; nothing was published"))

@@ -1,0 +1,54 @@
+<style>
+  .terminal-wrap { margin-top:22px; padding:18px; border:1px solid #26384a; border-radius:16px; background:#02050a; box-shadow:0 30px 80px rgba(0,0,0,.42); overflow:auto; }
+  .terminal-label { display:flex; justify-content:space-between; margin-bottom:12px; color:#607387; font:700 11px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.08em; }
+  .terminal { display:inline-block; min-width:100%; margin:0; color:#a8bdcb; background:#050b11; font:12px/1.42 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre; tab-size:2; }
+  .c { color:#22d3ee; font-weight:800; } .w { color:#edf8ff; font-weight:800; } .m { color:#587083; } .a { color:#fbbf24; font-weight:800; } .g { color:#34d399; font-weight:800; } .v { color:#a78bfa; font-weight:800; }
+  .callouts { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+  .callout { padding:14px 15px; border:1px solid #26374a; border-radius:10px; background:#08111b; color:#8ca0af; font-size:12px; line-height:1.5; }
+  .callout b { display:block; margin-bottom:4px; color:#e6f4fb; }
+  .question { margin-top:18px; padding:17px 18px; border:1px solid #0e7490; border-radius:11px; background:#071b26; color:#a5f3fc; cursor:pointer; }
+  .question.selected { border-color:#67e8f9; box-shadow:0 0 0 2px rgba(34,211,238,.16); }
+  .question strong { display:block; margin-bottom:4px; color:#f0fdff; }
+  @media(max-width:850px){.callouts{grid-template-columns:1fr}.terminal{font-size:10px}}
+</style>
+
+<h2>La direction hybride, traduite en vrai TUI</h2>
+<p class="subtitle">Voici l’écran cible à 120×30. Le dessin est composé uniquement de cellules terminal, de couleurs ANSI et de caractères Unicode.</p>
+
+<div class="terminal-wrap">
+  <div class="terminal-label"><span>APERÇU RÉALISTE · 120 COLONNES × 30 LIGNES</span><span>CLAVIER UNIQUEMENT</span></div>
+  <pre class="terminal"><span class="c">SOVEREIGN KIT</span><span class="m">  //  SETUP  /  CHOOSE A RECIPE                                      STEP 2 OF 5</span>
+<span class="m">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+<span class="m">┌─ RECIPES ─────────────────────┐</span>  <span class="m">┌─ DIRECT COMPARISON ────────────────────────────────────────┐</span>  <span class="m">┌─ DECISION ────────────────────┐</span>
+<span class="m">│</span> <span class="c">▸ 01  QWEN SOLO</span>             <span class="m">│</span>  <span class="m">│</span> <span class="w">CONTEXT WINDOW</span>                         <span class="m">scale 0—262K</span> <span class="m">│</span>  <span class="m">│</span> <span class="a">EXPERIMENTAL</span>                  <span class="m">│</span>
+<span class="m">│</span>      <span class="w">RTX 5090 · individual</span>    <span class="m">│</span>  <span class="m">│</span> <span class="c">Solo</span>    <span class="c">████</span><span class="m">──────────────────────────</span>  <span class="w">32,768</span>  <span class="m">│</span>  <span class="m">│</span> <span class="w">QWEN SOLO</span>                     <span class="m">│</span>
+<span class="m">│</span>      <span class="a">EXPERIMENTAL</span>             <span class="m">│</span>  <span class="m">│</span> <span class="v">Studio</span>  <span class="v">██████████████████████████████</span> <span class="w">262,144</span>  <span class="m">│</span>  <span class="m">│</span> Private route for one developer <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span>                                                             <span class="m">│</span>  <span class="m">│</span> and one active request.       <span class="m">│</span>
+<span class="m">│</span>   02  QWEN STUDIO           <span class="m">│</span>  <span class="m">│</span> <span class="w">MAX OUTPUT</span>                              <span class="m">scale 0—16K</span> <span class="m">│</span>  <span class="m">│</span>                               <span class="m">│</span>
+<span class="m">│</span>      RTX PRO 6000 · shared   <span class="m">│</span>  <span class="m">│</span> <span class="c">Solo</span>    <span class="c">████████</span><span class="m">──────────────────────</span>   <span class="w">4,096</span>  <span class="m">│</span>  <span class="m">│</span> <span class="g">BEST WHEN</span>                     <span class="m">│</span>
+<span class="m">│</span>      <span class="g">REFERENCE</span>                <span class="m">│</span>  <span class="m">│</span> <span class="v">Studio</span>  <span class="v">██████████████████████████████</span>  <span class="w">16,384</span>  <span class="m">│</span>  <span class="m">│</span> ◆ 32K context is enough       <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span>                                                             <span class="m">│</span>  <span class="m">│</span> ◆ One active request is enough<span class="m">│</span>
+<span class="m">│</span>   03  HUGGING FACE          <span class="m">│</span>  <span class="m">│</span> <span class="w">CONCURRENT REQUESTS</span>                     <span class="m">scale 0—5</span> <span class="m">│</span>  <span class="m">│</span> ◆ Lowest hardware requirement <span class="m">│</span>
+<span class="m">│</span>      custom model + hardware <span class="m">│</span>  <span class="m">│</span> <span class="c">Solo</span>    <span class="c">██████</span><span class="m">────────────────────────</span>       <span class="w">1</span>  <span class="m">│</span>  <span class="m">│</span>                               <span class="m">│</span>
+<span class="m">│</span>      <span class="m">UNMEASURED</span>               <span class="m">│</span>  <span class="m">│</span> <span class="v">Studio</span>  <span class="v">██████████████████████████████</span>       <span class="w">5</span>  <span class="m">│</span>  <span class="m">│</span> <span class="a">YOU GIVE UP</span>                   <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span>                                                             <span class="m">│</span>  <span class="m">│</span> −229,376 context              <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="w">MINIMUM VRAM</span>                        <span class="m">lower is lighter</span> <span class="m">│</span>  <span class="m">│</span> −12,288 max output            <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="c">Solo</span>    <span class="c">██████████</span><span class="m">────────────────────</span>   <span class="w">32 GB</span>  <span class="m">│</span>  <span class="m">│</span> −4 concurrent requests        <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="v">Studio</span>  <span class="v">██████████████████████████████</span>   <span class="w">96 GB</span>  <span class="m">│</span>  <span class="m">│</span>                               <span class="m">│</span>
+<span class="m">└───────────────────────────────┘</span>  <span class="m">└─────────────────────────────────────────────────────────────┘</span>  <span class="m">└───────────────────────────────┘</span>
+
+  <span class="m">MODEL</span>  RadixArk/Qwen3.8-27B-NVFP4   <span class="m">RUNTIME</span>  sglang   <span class="m">GPU</span>  1× RTX 5090 strict   <span class="m">DISK</span>  100 GB min
+  <span class="m">EVIDENCE</span>  Historical candidate only — exact digest must be revalidated before production claims
+
+                                                <span class="c">[ USE QWEN SOLO ]</span>
+<span class="m">↑/↓ select recipe   tab switch panel   i inspect evidence   enter continue   esc cancel</span></pre>
+</div>
+
+<div class="callouts">
+  <div class="callout"><b>Le comparatif reste au centre</b>Les barres sont des cellules, avec une échelle annoncée et la valeur exacte au bout. Elles restent utiles même sans couleur.</div>
+  <div class="callout"><b>Le rail droit décide</b>Il traduit les différences en gains et sacrifices. Aucun score magique, aucun radar ambigu.</div>
+  <div class="callout"><b>Responsive par densité</b>À 80–119 colonnes, le rail “Decision” passe sous les barres. Sous 72 colonnes, on garde les valeurs et une seule barre active.</div>
+</div>
+
+<div class="question option" data-choice="approve-tui-cockpit" onclick="toggleSelect(this)"><strong>Valider ce cockpit TUI comme direction</strong>Rail de recipes + bar charts comparatifs + décision contextuelle, avec adaptation 120 / 80 / 40 colonnes.</div>

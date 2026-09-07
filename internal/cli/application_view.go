@@ -23,6 +23,11 @@ func (m *applicationModel) resizeChild() {
 	m.confirmation.Width = width
 	m.confirmation.Height = max(1, height-3)
 	if m.confirmText != "" {
+		if width >= 48 && height >= 18 {
+			width = min(62, width-10)
+			m.confirmation.Width = width
+			m.confirmation.Height = min(10, height-10)
+		}
 		m.confirmation.SetContent(ansi.Wrap(m.sanitize(m.confirmText), width, ""))
 		height = 3
 	}
@@ -30,9 +35,16 @@ func (m *applicationModel) resizeChild() {
 		if m.resizeFormDescription != nil {
 			m.resizeFormDescription(height < 12)
 		}
-		form.WithWidth(width).WithHeight(height)
+		form.WithWidth(min(76, width)).WithHeight(height)
 	}
 	childHeight := height
+	childWidth := width
+	if m.pending != nil && m.pending.kind == promptCost && m.width >= 80 && m.height >= 30 {
+		childWidth, childHeight = 62, min(18, height-6)
+	}
+	if _, ok := m.child.(*huh.Form); ok {
+		childWidth = min(76, width)
+	}
 	if picker, ok := m.child.(catalogui.Model); ok {
 		childHeight = height + 2
 		if !picker.EvidenceOpen() {
@@ -40,14 +52,14 @@ func (m *applicationModel) resizeChild() {
 		}
 	}
 	if m.child != nil {
-		m.child, _ = m.child.Update(tea.WindowSizeMsg{Width: width, Height: childHeight})
+		m.child, _ = m.child.Update(tea.WindowSizeMsg{Width: childWidth, Height: childHeight})
 	}
 	m.dashboard, _ = updateDashboardSize(m.dashboard, width, max(1, m.height-4))
 }
 func (m *applicationModel) View() string {
 	if m.width < 30 || m.height < 10 {
 		if m.exitConfirm {
-			return fitApplication("Stop local work?\ny exit · n continue\n"+m.paidWarning(), m.width, m.height)
+			return fitApplication(m.exitView(), m.width, m.height)
 		}
 		if m.screen == "dashboard" {
 			return fitApplication(m.dashboard.View()+"\nEnter · PgUp/Dn · d/q", m.width, m.height)
@@ -55,6 +67,9 @@ func (m *applicationModel) View() string {
 		return fitApplication("SOVEREIGN KIT\nEnlarge to at least 30×10.\nCtrl+C to stop.", m.width, m.height)
 	}
 	title := "SOVEREIGN KIT / " + strings.ToUpper(m.screen)
+	if m.destruction != nil && m.destruction.action == "stop" {
+		title = "SOVEREIGN KIT / STOPPING"
+	}
 	if m.logsExpanded && !m.exitConfirm {
 		return fitApplication(m.expandedServerLogs(), m.width, m.height)
 	}
@@ -76,16 +91,11 @@ func (m *applicationModel) View() string {
 		}
 	case "home":
 		if m.configured {
-			body = "Route configured, not verified.\n\nConnect to check the endpoint.\nReconfigure only with replacement approval."
 			footer = "Enter connect · r setup · q quit"
 		} else {
-			body = "Configure your private route.\n\nVast GPU or an existing SSH host."
 			footer = "Enter setup · q quit"
 		}
-		body += "\n\n[i] recover an existing Vast instance"
-		if m.errText != "" {
-			body += "\n\nConfiguration error: " + m.errText
-		}
+		body = m.homeView()
 	case "replace":
 		body = "A configuration already exists.\nReplace it?\n\nNo setup or paid creation starts without approval."
 		choice := "NO"
@@ -145,6 +155,9 @@ func (m *applicationModel) View() string {
 		if warning := m.paidPromptWarning(); warning != "" {
 			body = warning + "\n" + body
 		}
+		if _, ok := m.child.(*huh.Form); ok && m.confirmText == "" && m.width >= 90 {
+			body = m.centerPanel(body)
+		}
 	case "working", "connecting", "destroying":
 		reserve := 0
 		if m.creating || m.instanceID > 0 {
@@ -156,22 +169,32 @@ func (m *applicationModel) View() string {
 			logRows = min(7, max(2, available/3))
 			available -= logRows + 1
 		}
-		if m.progressStage == setup.ProgressModelSearch || m.progressStage == setup.ProgressModelInspect || m.progressStage == setup.ProgressSearching {
-			available = min(available, 2)
-		}
 		body = m.loader.view(m.width, available, m.deps.Setup.Getenv("NO_COLOR") == "", "")
 		if logRows > 0 {
 			body += "\n\n" + m.compactServerLogs(min(m.width, 100), logRows)
 		}
 		footer = "Ctrl+C stop"
+		if m.screen == "connecting" && m.instanceID > 0 {
+			footer = "Esc / Ctrl+C · stop, leave running or destroy"
+		}
 		if logRows > 0 {
 			footer = "l logs · Ctrl+C stop"
 		}
 	case "saved":
 		body = "Configuration saved.\nRoute not verified.\n\nConnect to verify the endpoint."
 		footer = "Enter connect · Esc home · q quit"
+	case "restart-confirm":
+		choices := "> Cancel\n  Restart and connect"
+		if m.selected {
+			choices = "  Cancel\n> Restart and connect"
+		}
+		body = fmt.Sprintf("Restart instance #%d?\n\nThis instance is stopped.\nRestarting resumes GPU billing.\nThe saved model and data will be reused.\n\n%s", m.instanceID, choices)
+		footer = "↑↓ choose · Enter confirm · Esc cancel"
 	case "error":
 		body = m.errText
+		if m.creating || m.instanceID > 0 {
+			body = m.loader.frozen(m.width, m.height, m.deps.Setup.Getenv("NO_COLOR") == "", "!") + body
+		}
 		if m.recoveryText != "" {
 			body += "\n" + m.recoveryText
 		}
@@ -187,12 +210,7 @@ func (m *applicationModel) View() string {
 			footer = "l logs · " + footer
 		}
 	case "destroy-confirm":
-		body = fmt.Sprintf("Destroy instance #%d?\nAll its data will be lost.\nBilling may still be active.", m.instanceID)
-		choice := "CANCEL"
-		if m.selected {
-			choice = "DESTROY"
-		}
-		footer = "←→ " + choice + " · Enter · Esc"
+		body = m.destroyDialog(m.instanceID)
 	case "destroyed":
 		body = m.recoveryText
 		footer = "q quit"
@@ -210,11 +228,23 @@ func (m *applicationModel) View() string {
 			body = m.compactPaidWarning() + "\n" + body
 		}
 	}
-	if m.exitConfirm {
-		body = "Stop local work and exit?\n" + m.paidWarning()
-		footer = "y exit · n/Esc continue"
+	if !m.exitConfirm {
+		if m.screen == "prompt" && m.pending != nil && m.pending.kind == promptCost && m.width >= 80 && m.height >= 30 {
+			body = m.modal("", body)
+		}
+		if m.screen == "prompt" && m.confirmText != "" {
+			body = m.modal(m.loader.view(m.width, m.height-4, false, ""), body+"\n"+footer)
+			footer = ""
+		}
+		switch m.screen {
+		case "replace", "destroy-confirm", "restart-confirm":
+			body = m.modal(m.loader.view(m.width, m.height-4, false, ""), body+"\n\n"+footer)
+			footer = ""
+		case "resume", "saved", "destroyed":
+			body = m.primaryPanel(strings.ToUpper(m.screen), body, "")
+		}
 	}
-	if !m.exitConfirm && (m.screen == "working" || m.screen == "connecting" || m.screen == "destroying") {
+	if m.screen == "working" || m.screen == "connecting" || m.screen == "destroying" {
 		// Keep identity and billing in the same bounded composition as the
 		// loader, without moving the keyboard footer or clipping small screens.
 		blockWidth := min(m.width, 100)
@@ -227,6 +257,10 @@ func (m *applicationModel) View() string {
 		top := max(0, (m.height-4-len(lines))/2)
 		body = strings.Repeat("\n", top) + strings.Join(lines, "\n")
 	}
+	if m.exitConfirm {
+		body = m.modal(body, m.exitView())
+		footer = ""
+	}
 	// Redact before rendering, while preserving the UI's own ANSI styling.
 	for _, secret := range m.secrets {
 		body = strings.ReplaceAll(body, secret, "[redacted]")
@@ -236,7 +270,7 @@ func (m *applicationModel) View() string {
 		if m.locked {
 			prefix = ansi.Wrap(m.compactPaidWarning(), m.width, "") + "\n"
 		}
-		prefix += m.loader.frozen(m.width, m.height, m.deps.Setup.Getenv("NO_COLOR") == "", "!")
+		prefix += m.ink("! ACTION REQUIRED", "#FFB454") + "\n\n"
 		// Paid identity remains pinned; only the diagnostic scrolls.
 		reserved := 0
 		if prefix != "" {
@@ -254,8 +288,8 @@ func (m *applicationModel) View() string {
 	for len(lines) < height {
 		lines = append(lines, "")
 	}
-	header := ansi.Truncate(title, m.width, "")
-	return header + "\n" + strings.Repeat("─", m.width) + "\n" + strings.Join(lines, "\n") + "\n" + ansi.Truncate(footer, m.width, "") + "\n"
+	header := m.applicationHeader(title)
+	return header + "\n" + m.ink(strings.Repeat("─", m.width), "#3C6473") + "\n" + strings.Join(lines, "\n") + "\n" + m.ink(ansi.Truncate(footer, m.width, ""), "#A7C1CB") + "\n"
 }
 func (m *applicationModel) paidPromptWarning() string {
 	if m.screen == "prompt" && m.instanceID > 0 {
@@ -294,7 +328,7 @@ func progressLabel(stage string) string {
 	case setup.ProgressWaiting:
 		return "Waiting for the instance…"
 	case setup.ProgressHostKeys:
-		return "Checking host fingerprints…"
+		return "Securing SSH host…"
 	case setup.ProgressLaunching:
 		return "Launching inference server…"
 	case setup.ProgressSaving:

@@ -5,40 +5,95 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 )
 
+type OfferSort string
+
+const (
+	SortPrice       OfferSort = "price"
+	SortReliability OfferSort = "reliability"
+)
+
 type SearchRequest struct {
+	Countries     []string
+	Sort          OfferSort
 	Limit         int
+	GPUModel      string
+	GPUCount      int
+	StrictGPU     bool
 	MinimumVRAMGB int
+	MinimumDiskGB int
 }
 
 type Offer struct {
-	ID          int     `json:"id"`
-	GPUName     string  `json:"gpu_name"`
-	GPUVRAMGB   float64 `json:"gpu_ram"`
-	HourlyUSD   float64 `json:"dph_total"`
-	Location    string  `json:"geolocation"`
-	Reliability float64 `json:"reliability"`
+	PriceUnknown       bool    `json:"price_unknown,omitempty"`
+	ReliabilityUnknown bool    `json:"reliability_unknown,omitempty"`
+	ID                 int     `json:"id"`
+	MachineID          int     `json:"machine_id"`
+	GPUName            string  `json:"gpu_name"`
+	GPUCount           int     `json:"num_gpus"`
+	GPUVRAMGB          float64 `json:"gpu_ram"`
+	TotalGPUVRAMGB     float64 `json:"total_gpu_vram_gb"`
+	CPUCores           float64 `json:"cpu_cores_effective"`
+	CPURAMGB           float64 `json:"cpu_ram"`
+	DiskSpaceGB        float64 `json:"disk_space"`
+	InetDownMBps       float64 `json:"inet_down"`
+	InetUpMBps         float64 `json:"inet_up"`
+	DriverVersion      string  `json:"driver_version"`
+	HourlyUSD          float64 `json:"dph_total"`
+	Location           string  `json:"geolocation"`
+	Reliability        float64 `json:"reliability"`
 }
 
 type offerResponse struct {
-	ID          int     `json:"id"`
-	GPUName     string  `json:"gpu_name"`
-	GPURAMMB    float64 `json:"gpu_ram"`
-	HourlyUSD   float64 `json:"dph_total"`
-	Location    string  `json:"geolocation"`
-	Reliability float64 `json:"reliability"`
+	ID            int      `json:"id"`
+	MachineID     int      `json:"machine_id"`
+	GPUName       string   `json:"gpu_name"`
+	GPUCount      int      `json:"num_gpus"`
+	GPURAMMB      float64  `json:"gpu_ram"`
+	CPUCores      float64  `json:"cpu_cores_effective"`
+	CPURAMMB      float64  `json:"cpu_ram"`
+	DiskSpaceGB   float64  `json:"disk_space"`
+	InetDownMBps  float64  `json:"inet_down"`
+	InetUpMBps    float64  `json:"inet_up"`
+	DriverVersion string   `json:"driver_version"`
+	HourlyUSD     *float64 `json:"dph_total"`
+	Location      string   `json:"geolocation"`
+	Reliability   *float64 `json:"reliability"`
 }
 
 func (offer offerResponse) normalized() Offer {
+	gpuVRAMGB := offer.GPURAMMB / 1000
+	price, priceUnknown := 0.0, true
+	if offer.HourlyUSD != nil && *offer.HourlyUSD >= 0 && !math.IsInf(*offer.HourlyUSD, 0) && !math.IsNaN(*offer.HourlyUSD) {
+		price = *offer.HourlyUSD
+		priceUnknown = false
+	}
+	reliability, reliabilityUnknown := 0.0, true
+	if offer.Reliability != nil && *offer.Reliability >= 0 && *offer.Reliability <= 1 {
+		reliability = *offer.Reliability
+		reliabilityUnknown = false
+	}
 	return Offer{
-		ID:          offer.ID,
-		GPUName:     offer.GPUName,
-		GPUVRAMGB:   offer.GPURAMMB / 1024,
-		HourlyUSD:   offer.HourlyUSD,
-		Location:    offer.Location,
-		Reliability: offer.Reliability,
+		PriceUnknown:       priceUnknown,
+		ReliabilityUnknown: reliabilityUnknown,
+		ID:                 offer.ID,
+		MachineID:          offer.MachineID,
+		GPUName:            offer.GPUName,
+		GPUCount:           offer.GPUCount,
+		GPUVRAMGB:          gpuVRAMGB,
+		TotalGPUVRAMGB:     gpuVRAMGB * float64(offer.GPUCount),
+		CPUCores:           offer.CPUCores,
+		CPURAMGB:           offer.CPURAMMB / 1000,
+		DiskSpaceGB:        offer.DiskSpaceGB,
+		InetDownMBps:       offer.InetDownMBps,
+		InetUpMBps:         offer.InetUpMBps,
+		DriverVersion:      offer.DriverVersion,
+		HourlyUSD:          price,
+		Location:           offer.Location,
+		Reliability:        reliability,
 	}
 }
 
@@ -49,22 +104,46 @@ type searchResponse struct {
 }
 
 func (client *Client) SearchOffers(ctx context.Context, request SearchRequest) ([]Offer, error) {
+	countries, err := NormalizeCountries(request.Countries)
+	if err != nil {
+		return nil, err
+	}
+	order := [][]string{{"dph_total", "asc"}}
+	switch request.Sort {
+	case "", SortPrice:
+	case SortReliability:
+		order = [][]string{{"reliability", "desc"}, {"dph_total", "asc"}}
+	default:
+		return nil, fmt.Errorf("invalid offer sort %q", request.Sort)
+	}
 	if request.Limit < 1 || request.Limit > 100 {
 		return nil, fmt.Errorf("offer limit must be between 1 and 100")
 	}
 	if request.MinimumVRAMGB < 1 {
 		return nil, fmt.Errorf("minimum VRAM must be positive")
 	}
+	if request.MinimumDiskGB < 1 {
+		return nil, fmt.Errorf("minimum disk must be positive")
+	}
 	if client.token == "" {
 		return nil, fmt.Errorf("Vast API token is required")
 	}
 	payload := map[string]any{
-		"limit":    request.Limit,
-		"type":     "ondemand",
-		"verified": map[string]bool{"eq": true},
-		"rentable": map[string]bool{"eq": true},
-		"rented":   map[string]bool{"eq": false},
-		"gpu_ram":  map[string]int{"gte": request.MinimumVRAMGB * 1024},
+		"limit":      request.Limit,
+		"type":       "ondemand",
+		"verified":   map[string]bool{"eq": true},
+		"rentable":   map[string]bool{"eq": true},
+		"rented":     map[string]bool{"eq": false},
+		"gpu_ram":    map[string]int{"gte": request.MinimumVRAMGB * 1000},
+		"disk_space": map[string]int{"gte": request.MinimumDiskGB},
+		"order":      order,
+	}
+	if len(countries) > 0 {
+		payload["geolocation"] = map[string][]string{"in": countries}
+	}
+	if request.StrictGPU {
+		payload["gpu_name"] = map[string]string{"eq": request.GPUModel}
+		payload["num_gpus"] = map[string]int{"eq": request.GPUCount}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

@@ -1,0 +1,128 @@
+<style>
+  .stage { margin-top:24px; border:1px solid #203044; border-radius:20px; overflow:hidden; background:#050912; box-shadow:0 34px 90px rgba(0,0,0,.44); }
+  .stage-top { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid #203044; background:#0a111d; font-family:"SFMono-Regular",Consolas,monospace; }
+  .brand { color:#67e8f9; letter-spacing:.13em; font-weight:900; }
+  .step { color:#64748b; font-size:12px; }
+  .workspace { display:grid; grid-template-columns:250px 1fr; min-height:690px; font-family:"SFMono-Regular",Consolas,monospace; }
+  .sidebar { padding:16px; border-right:1px solid #203044; background:#070d16; }
+  .sidebar-label { margin:4px 7px 13px; color:#475569; font-size:10px; letter-spacing:.14em; }
+  .recipe { padding:14px; margin-bottom:10px; border:1px solid transparent; border-radius:11px; color:#94a3b8; }
+  .recipe.active { border-color:#0891b2; color:#f8fafc; background:linear-gradient(135deg,rgba(8,145,178,.19),rgba(8,145,178,.04)); box-shadow:inset 3px 0 #22d3ee; }
+  .recipe strong { display:block; font-size:15px; }
+  .recipe small { display:block; margin-top:6px; color:#64748b; line-height:1.45; }
+  .recipe.active small { color:#a5f3fc; }
+  .keyline { margin-top:28px; padding:12px 7px; color:#475569; font-size:11px; line-height:1.8; }
+  .main { padding:24px 26px 20px; background:radial-gradient(circle at 77% 13%,rgba(8,145,178,.13),transparent 28%),#050912; }
+  .hero { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:18px; }
+  .eyebrow { color:#fbbf24; font-size:10px; letter-spacing:.16em; font-weight:800; }
+  .hero h3 { margin:7px 0 5px; color:#f8fafc; font-size:36px; line-height:1; }
+  .hero p { margin:0; color:#a5f3fc; font-size:13px; max-width:690px; }
+  .decision { padding:9px 12px; border:1px solid #164e63; border-radius:999px; background:#08202b; color:#67e8f9; font-size:11px; white-space:nowrap; }
+  .grid { display:grid; grid-template-columns:minmax(480px,1.45fr) minmax(275px,.75fr); gap:14px; }
+  .panel { border:1px solid #1e293b; border-radius:13px; background:rgba(8,15,25,.91); overflow:hidden; }
+  .panel-head { display:flex; justify-content:space-between; gap:12px; padding:11px 14px; border-bottom:1px solid #1e293b; color:#64748b; font-size:10px; }
+  .panel-head strong { color:#e2e8f0; letter-spacing:.07em; }
+  .context { padding:18px 18px 14px; }
+  .context-number { display:flex; align-items:end; justify-content:space-between; gap:18px; margin-bottom:14px; }
+  .context-number b { color:#f8fafc; font-size:35px; line-height:1; }
+  .context-number span { color:#67e8f9; font-size:12px; }
+  .track { position:relative; height:36px; border:1px solid #1e3a4a; border-radius:5px; background:repeating-linear-gradient(90deg,#0b1520 0,#0b1520 calc(25% - 1px),#233043 calc(25% - 1px),#233043 25%); overflow:hidden; }
+  .fill { position:absolute; inset:0 auto 0 0; width:12.5%; background:linear-gradient(90deg,rgba(8,145,178,.55),rgba(34,211,238,.95)); box-shadow:0 0 34px rgba(34,211,238,.3); }
+  .marker { position:absolute; left:12.5%; top:-2px; bottom:-2px; width:2px; background:#cffafe; box-shadow:0 0 12px #22d3ee; }
+  .axis { display:flex; justify-content:space-between; margin-top:8px; color:#475569; font-size:9px; }
+  .source { margin-top:12px; color:#475569; font-size:9px; line-height:1.45; }
+  .source b { color:#94a3b8; }
+  .limits { display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid #1e293b; }
+  .limit { padding:14px; border-right:1px solid #1e293b; color:#64748b; font-size:9px; }
+  .limit:last-child { border-right:0; }
+  .limit b { display:block; margin:7px 0 4px; color:#f8fafc; font-size:19px; }
+  .throughput { grid-column:1; }
+  .throughput-grid { display:grid; grid-template-columns:1fr 1fr; }
+  .speed { padding:17px; border-right:1px solid #1e293b; }
+  .speed:last-child { border-right:0; }
+  .speed-type { color:#64748b; font-size:9px; letter-spacing:.09em; }
+  .speed-value { margin:12px 0 10px; color:#94a3b8; font-size:27px; font-weight:900; }
+  .speed-value span { color:#475569; font-size:11px; font-weight:500; }
+  .empty-chart { position:relative; height:58px; border-bottom:1px solid #334155; background:repeating-linear-gradient(0deg,transparent 0,transparent 18px,rgba(51,65,85,.32) 19px); }
+  .empty-chart:after { content:"MESURE REQUISE"; position:absolute; inset:0; display:grid; place-items:center; color:#475569; font-size:9px; letter-spacing:.12em; }
+  .protocol { grid-column:1 / -1; padding:11px 14px; border-top:1px solid #1e293b; background:#070d16; color:#64748b; font-size:9px; line-height:1.55; }
+  .protocol b { color:#94a3b8; }
+  .explain { grid-column:2; grid-row:1 / span 2; display:flex; flex-direction:column; }
+  .why { padding:19px; flex:1; }
+  .why h4 { margin:0 0 15px; color:#f8fafc; font-size:17px; }
+  .reason { position:relative; padding:0 0 17px 25px; color:#94a3b8; font-size:12px; line-height:1.5; }
+  .reason:before { content:""; position:absolute; left:0; top:4px; width:10px; height:10px; border:2px solid #22d3ee; border-radius:3px; }
+  .reason strong { display:block; color:#dbeafe; margin-bottom:3px; }
+  .warning { margin-top:5px; padding:13px; border-left:3px solid #f59e0b; background:#1b1509; color:#fcd34d; font-size:11px; line-height:1.45; }
+  .topology { margin-top:auto; padding:15px 18px; border-top:1px solid #1e293b; background:#070d16; }
+  .topology-label { color:#475569; font-size:9px; letter-spacing:.1em; }
+  .flow { display:flex; align-items:center; gap:7px; margin-top:11px; color:#cbd5e1; font-size:9px; }
+  .node { padding:8px; border:1px solid #334155; border-radius:6px; background:#0b1420; }
+  .arrow { color:#22d3ee; }
+  .action { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-top:15px; padding-top:13px; border-top:1px solid #172033; color:#64748b; font-size:11px; }
+  .button { padding:10px 17px; border-radius:8px; background:#0891b2; color:#ecfeff; font-weight:800; box-shadow:0 0 24px rgba(8,145,178,.26); }
+  .note { margin:18px 0 0; padding:15px 17px; border:1px solid #263244; border-radius:12px; background:#0a111d; color:#94a3b8; line-height:1.55; }
+  .note strong { color:#f8fafc; }
+  .approve { margin-top:14px; padding:18px 20px; border:1px solid #155e75; border-radius:12px; background:#071a24; cursor:pointer; color:#a5f3fc; }
+  .approve.selected { border-color:#67e8f9; box-shadow:0 0 0 2px rgba(34,211,238,.18); }
+  .approve strong { display:block; color:#f8fafc; margin-bottom:5px; }
+  @media (max-width:920px) { .workspace,.grid { grid-template-columns:1fr; } .sidebar { border-right:0; border-bottom:1px solid #203044; } .explain { grid-column:1; grid-row:auto; } .throughput { grid-column:1; } .hero { flex-direction:column; } }
+</style>
+<h2>Qwen Solo — capacité native et débit vérifiable</h2>
+<p class="subtitle">La barre répond désormais à une vraie question : quelle part du contexte natif le profil configure-t-il ?</p>
+<div class="stage">
+  <div class="stage-top"><span class="brand">SOVEREIGN KIT / RECIPE LAB</span><span class="step">CHOIX 01 — RECETTE</span></div>
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="sidebar-label">RECETTES DISPONIBLES</div>
+      <div class="recipe active"><strong>01  Qwen Solo</strong><small>Individuel · RTX 5090<br>Expérimental</small></div>
+      <div class="recipe"><strong>02  Qwen Studio</strong><small>Long contexte · RTX PRO 6000<br>Référence</small></div>
+      <div class="recipe"><strong>03  Hugging Face</strong><small>Modèle et matériel personnalisés</small></div>
+      <div class="keyline">↑↓ NAVIGUER<br>ENTRÉE CHOISIR<br>I EXPLIQUER<br>ÉCHAP ANNULER</div>
+    </aside>
+    <main class="main">
+      <div class="hero">
+        <div><div class="eyebrow">EXPÉRIMENTAL · RECETTE INTÉGRÉE</div><h3>Qwen Solo</h3><p>Route Qwen privée prévue pour un développeur et une seule requête active.</p></div>
+        <div class="decision">PROFIL INDIVIDUEL</div>
+      </div>
+      <div class="grid">
+        <section class="panel">
+          <div class="panel-head"><strong>CONTEXTE CONFIGURÉ / NATIF</strong><span>échelle linéaire · 0–262 144 tokens</span></div>
+          <div class="context">
+            <div class="context-number"><b>32 768 tokens</b><span>12,5 % DU CONTEXTE NATIF</span></div>
+            <div class="track"><div class="fill"></div><div class="marker"></div></div>
+            <div class="axis"><span>0</span><span>65 536</span><span>131 072</span><span>196 608</span><span>262 144 natif</span></div>
+            <div class="source"><b>Source native :</b> max_position_embeddings = 262144 · config.json du modèle au commit épinglé 319f741c…</div>
+          </div>
+          <div class="limits">
+            <div class="limit">SORTIE CONFIGURÉE<b>4 096 tokens</b><span>aucun plafond natif distinct exposé</span></div>
+            <div class="limit">SIMULTANÉITÉ<b>1 requête</b><span>limite de la recette</span></div>
+            <div class="limit">VRAM MINIMALE<b>32 Go</b><span>1× RTX 5090 strict</span></div>
+          </div>
+        </section>
+        <section class="panel throughput">
+          <div class="panel-head"><strong>DÉBIT DU PROFIL EXACT</strong><span>aucune estimation</span></div>
+          <div class="throughput-grid">
+            <div class="speed"><div class="speed-type">INPUT / PREFILL</div><div class="speed-value">NON MESURÉ <span>tok/s</span></div><div class="empty-chart"></div></div>
+            <div class="speed"><div class="speed-type">OUTPUT / DECODE</div><div class="speed-value">NON MESURÉ <span>tok/s</span></div><div class="empty-chart"></div></div>
+            <div class="protocol"><b>Protocole requis :</b> image SGLang au digest épinglé · RTX 5090 · FP8 KV · input 8 192 · output 1 024 · concurrence 1 · échauffement et répétitions documentés.</div>
+          </div>
+        </section>
+        <section class="panel explain">
+          <div class="panel-head"><strong>POURQUOI L’UTILISER ?</strong><span>décision guidée</span></div>
+          <div class="why">
+            <h4>Choisis Qwen Solo si…</h4>
+            <div class="reason"><strong>Usage individuel</strong>Tu veux une route privée pensée pour une seule session active.</div>
+            <div class="reason"><strong>32K couvrent ton besoin</strong>La recette limite volontairement le modèle à 12,5 % de sa capacité contextuelle native.</div>
+            <div class="reason"><strong>Matériel déterministe</strong>Le déploiement cible précisément une RTX 5090 avec au moins 32 Go de VRAM et 100 Go de disque.</div>
+            <div class="warning">Les anciens chiffres de débit viennent d’une autre configuration. Ils ne seront jamais affichés ici comme preuve de cette recette.</div>
+          </div>
+          <div class="topology"><div class="topology-label">ROUTE TECHNIQUE</div><div class="flow"><span class="node">Qwen3.8-27B</span><span class="arrow">→</span><span class="node">SGLang</span><span class="arrow">→</span><span class="node">RTX 5090</span></div></div>
+        </section>
+      </div>
+      <div class="action"><span>Le prix réel sera affiché après le scan Vast.</span><span class="button">UTILISER QWEN SOLO  ↵</span></div>
+    </main>
+  </div>
+</div>
+<div class="note"><strong>Pas d’area chart :</strong> aucune série temporelle ou relation x/y n’existe dans une recette. La barre de contexte a maintenant un dénominateur vérifié ; les débits restent vides jusqu’au gauntlet exact.</div>
+<div class="approve option" data-choice="approve-evidence-dashboard" onclick="toggleSelect(this)"><strong>Valider cette direction</strong>Contexte 32 768 / 262 144 natifs, sortie en valeur absolue, input/output tok/s explicitement non mesurés.</div>

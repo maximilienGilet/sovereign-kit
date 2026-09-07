@@ -2,7 +2,6 @@ package clientprofile
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -19,24 +18,8 @@ func fixture(t *testing.T) (Service, Target, Endpoint) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Run = func(ctx context.Context, command string, args, env []string) error {
-		if command != "pi" || len(args) != 2 || args[0] != "install" {
-			t.Fatalf("unexpected install %s %v", command, args)
-		}
-		var root string
-		for _, v := range env {
-			if strings.HasPrefix(v, "PI_CODING_AGENT_DIR=") {
-				root = strings.TrimPrefix(v, "PI_CODING_AGENT_DIR=")
-			}
-		}
-		name, version := "pi-subagents", "0.62.0"
-		if strings.Contains(args[1], "oh-my-pi") {
-			name, version = "oh-my-pi", "0.2.0"
-		}
-		dir := filepath.Join(root, "npm", "node_modules", name)
-		os.MkdirAll(filepath.Join(dir, "dist"), 0700)
-		os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"`+name+`","version":"`+version+`","pi":{"extensions":["./dist/extension.js"]}}`), 0600)
-		os.WriteFile(filepath.Join(dir, "dist", "extension.js"), []byte("// fixture"), 0600)
+	s.Run = func(context.Context, string, []string, []string) error {
+		t.Fatal("custom provider must not install packages")
 		return nil
 	}
 	return s, target, Endpoint{BaseURL: "http://127.0.0.1:30000/v1", Metadata: Metadata{ID: "owner/solo", ContextWindow: 32768, MaxTokens: 4096}}
@@ -56,12 +39,7 @@ func TestInspectionIsReadOnlyAndInstallVerifiesPreservingData(t *testing.T) {
 		t.Fatalf("install %#v %v", got, err)
 	}
 	settings := filepath.Join(target.Path, "settings.json")
-	raw, _ := os.ReadFile(settings)
-	var v map[string]any
-	json.Unmarshal(raw, &v)
-	v["theme"] = "my-theme"
-	raw, _ = json.Marshal(v)
-	os.WriteFile(settings, raw, 0600)
+	os.WriteFile(settings, []byte(`{"theme":"my-theme","defaultModel":"keep"}`), 0600)
 	os.WriteFile(filepath.Join(target.Path, "auth.json"), []byte("secret fixture"), 0600)
 	model.ID = "owner/updated"
 	before = s.Inspect(ctx, target, model)
@@ -72,9 +50,8 @@ func TestInspectionIsReadOnlyAndInstallVerifiesPreservingData(t *testing.T) {
 	if err != nil || got.State != Ready || got.Backup == "" {
 		t.Fatalf("update %#v %v", got, err)
 	}
-	raw, _ = os.ReadFile(settings)
-	json.Unmarshal(raw, &v)
-	if v["theme"] != "my-theme" || v["defaultModel"] != "owner/updated" {
+	raw, _ := os.ReadFile(settings)
+	if string(raw) != `{"theme":"my-theme","defaultModel":"keep"}` {
 		t.Fatalf("settings %s", raw)
 	}
 	for _, root := range []string{target.Path} {
@@ -83,8 +60,8 @@ func TestInspectionIsReadOnlyAndInstallVerifiesPreservingData(t *testing.T) {
 			t.Fatal("lost unrelated credentials")
 		}
 	}
-	old, err := readObject(filepath.Join(got.Backup, "settings.json"))
-	if err != nil || old["defaultModel"] != "owner/solo" {
+	old, err := readObject(filepath.Join(got.Backup, "models.json"))
+	if err != nil || old["providers"].(map[string]any)[provider].(map[string]any)["models"].([]any)[0].(map[string]any)["id"] != "owner/solo" {
 		t.Fatal("previous configuration not recoverable")
 	}
 }
@@ -92,7 +69,7 @@ func TestFailedInstallAndChangedOrUnsafeProfileNeverOverwrite(t *testing.T) {
 	s, target, model := fixture(t)
 	ctx := context.Background()
 	before := s.Inspect(ctx, target, model)
-	s.Run = func(context.Context, string, []string, []string) error { return errors.New("installer failed") }
+	s.LookPath = func(string) (string, error) { return "", errors.New("CLI missing") }
 	got, err := s.Install(ctx, target, model, before)
 	if err == nil || got.State == Ready {
 		t.Fatal("failure unlocked readiness")
@@ -101,7 +78,7 @@ func TestFailedInstallAndChangedOrUnsafeProfileNeverOverwrite(t *testing.T) {
 		t.Fatal("failed install published profile")
 	}
 	os.MkdirAll(target.Path, 0700)
-	os.WriteFile(filepath.Join(target.Path, "settings.json"), []byte("{"), 0600)
+	os.WriteFile(filepath.Join(target.Path, "models.json"), []byte("{"), 0600)
 	if got = s.Inspect(ctx, target, model); got.State != Unreadable {
 		t.Fatalf("bad JSON %#v", got)
 	}
@@ -109,13 +86,13 @@ func TestFailedInstallAndChangedOrUnsafeProfileNeverOverwrite(t *testing.T) {
 		t.Fatal("changed inspection accepted")
 	}
 	other := t.TempDir()
-	os.Remove(filepath.Join(target.Path, "settings.json"))
+	os.Remove(filepath.Join(target.Path, "models.json"))
 	os.Symlink(other, filepath.Join(target.Path, "models.json"))
 	if got = s.Inspect(ctx, target, model); got.State != Unreadable {
 		t.Fatalf("symlink accepted %#v", got)
 	}
 }
-func TestMissingLimitsAndGlobalOverrideAreRejected(t *testing.T) {
+func TestMissingLimitsRejectedAndNormalConfigOverrideAccepted(t *testing.T) {
 	s, target, model := fixture(t)
 	model.ContextWindow = 0
 	if _, err := s.Install(context.Background(), target, model, s.Inspect(context.Background(), target, model)); err == nil {
@@ -127,8 +104,8 @@ func TestMissingLimitsAndGlobalOverrideAreRejected(t *testing.T) {
 		}
 		return ""
 	}
-	if _, err := s.Resolve(Pi); err == nil {
-		t.Fatal("global Pi profile allowed")
+	if got, err := s.Resolve(Pi); err != nil || got.Path != filepath.Join(s.Home, ".pi", "agent") {
+		t.Fatalf("normal Pi config rejected: %#v %v", got, err)
 	}
 }
 
@@ -169,16 +146,15 @@ func TestOpenCodeUpdatesOnlyItsConfigAndUsesQuotedInlineCommand(t *testing.T) {
 	}
 }
 
-func TestFailedDependencyUpdateLeavesExistingProfileUntouched(t *testing.T) {
+func TestUnavailableCLILeavesExistingConfigurationUntouched(t *testing.T) {
 	s, target, e := fixture(t)
 	ctx := context.Background()
 	if _, err := s.Install(ctx, target, e, s.Inspect(ctx, target, e)); err != nil {
 		t.Fatal(err)
 	}
-	settings := filepath.Join(target.Path, "settings.json")
+	settings := filepath.Join(target.Path, "models.json")
 	original, _ := os.ReadFile(settings)
-	os.Remove(filepath.Join(target.Path, "npm/node_modules/oh-my-pi/dist/extension.js"))
-	s.Run = func(context.Context, string, []string, []string) error { return errors.New("network interrupted") }
+	s.LookPath = func(string) (string, error) { return "", errors.New("CLI missing") }
 	if _, err := s.Install(ctx, target, e, s.Inspect(ctx, target, e)); err == nil {
 		t.Fatal("failed update succeeded")
 	}

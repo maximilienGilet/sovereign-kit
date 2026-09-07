@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/maximilienGilet/sovereign-kit/internal/clientprofile"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
 	"github.com/maximilienGilet/sovereign-kit/internal/dashboardui"
+	"github.com/maximilienGilet/sovereign-kit/internal/setup"
 )
 
 type applicationConnection struct {
@@ -18,6 +21,8 @@ type applicationConnection struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	done       chan struct{}
+	events     chan applicationReconnectMsg
+	approval   chan bool
 	tunnel     Tunnel
 	err        error
 	healthy    bool // root-thread only
@@ -35,10 +40,66 @@ type applicationDashboardMsg struct {
 	message    tea.Msg
 }
 
+type applicationReconnectMsg struct {
+	generation uint64
+	instanceID int
+	status     string
+	confirm    bool
+}
+
+func (c *applicationConnection) next() tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-c.events:
+			return msg
+		case <-c.done:
+			return applicationConnectionMsg{c.generation, "connected", c.err}
+		}
+	}
+}
+
+func (m *applicationModel) reconnectMessage(msg applicationReconnectMsg) tea.Cmd {
+	c := m.connection
+	if c == nil || c.generation != msg.generation || c.ctx.Err() != nil {
+		return nil
+	}
+	if msg.confirm {
+		m.screen = "restart-confirm"
+		m.selected = false
+		m.instanceID = msg.instanceID
+	} else {
+		m.status = msg.status
+		m.loader.stage(m.status, time.Now())
+	}
+	return c.next()
+}
+
+func (m *applicationModel) restartKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "left", "right", "up", "down", "tab", " ":
+		m.selected = !m.selected
+	case "esc", "n":
+		return m.stopConnection(false)
+	case "enter":
+		if !m.selected {
+			return m.stopConnection(false)
+		}
+		if c := m.connection; c != nil && c.ctx.Err() == nil {
+			select {
+			case c.approval <- true:
+			default:
+			}
+			m.screen = "connecting"
+			m.status = "Restarting instance…"
+		}
+	}
+	return nil
+}
+
 func (m *applicationModel) beginConnection() tea.Cmd {
 	if m.destroyedID > 0 {
 		cfg, err := config.Load(m.path)
-		if err == nil && cfg.Provider.Kind == "vast" && cfg.Provider.InstanceID == m.destroyedID {
+		if os.IsNotExist(err) || (err == nil && cfg.Provider.Kind == "vast" && cfg.Provider.InstanceID == m.destroyedID) {
 			m.screen = "destroyed"
 			return nil
 		}
@@ -47,14 +108,74 @@ func (m *applicationModel) beginConnection() tea.Cmd {
 		return nil
 	}
 	m.generation++
+	// Retire any provisioning clock before the new connection generation starts.
+	// Otherwise an active clock suppresses reconciliation while its old-generation
+	// tick can no longer advance the verification animation.
+	if m.loader.active {
+		m.loader.active = false
+		m.loader.epoch++
+	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	c := &applicationConnection{generation: m.generation, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	c := &applicationConnection{generation: m.generation, ctx: ctx, cancel: cancel, done: make(chan struct{}), events: make(chan applicationReconnectMsg), approval: make(chan bool, 1)}
 	m.connection = c
 	m.screen = "connecting"
 	m.status = "Opening tunnel and checking endpoint…"
+	m.loader.stageID = "verifying-connection"
+	m.loader.serverPhase = ""
+	if m.progressStage == setup.ProgressSaving && (len(m.loader.completed) == 0 || m.loader.completed[len(m.loader.completed)-1] != "Configuration saved") {
+		m.loader.completed = append(m.loader.completed, "Configuration saved")
+	}
+	m.loader.future = nil
+	m.loader.transferActive = false
+	m.loader.transferCurrent = 0
+	m.loader.transferTotal = 0
+	m.loader.transferRatioHigh = 0
+	m.loader.transferCompleted = false
+	m.loader.transferCompletedAt = time.Time{}
+	m.loader.providerStatus = ""
+	m.loader.activity = nil
+	m.loader.checkedAt = time.Time{}
+	m.loader.activityChanged = time.Time{}
+	m.loader.detailSnapshot = ""
+	m.loader.providerMessage = ""
+	m.loader.stage(m.status, time.Now())
 	m.errText = ""
-	go func() { defer close(c.done); c.tunnel, c.err = Connect(ctx, io.Discard, m.path, m.deps.Start) }()
-	return func() tea.Msg { <-c.done; return applicationConnectionMsg{c.generation, "connected", c.err} }
+	prepare := m.reconnectPreparer()
+	path, deps := m.path, m.deps.Start
+	go func() {
+		defer close(c.done)
+		cfg, err := config.Load(path)
+		if err != nil {
+			c.err = err
+			return
+		}
+		confirm := func(ctx context.Context, id int) (bool, error) {
+			select {
+			case c.events <- applicationReconnectMsg{generation: c.generation, instanceID: id, confirm: true}:
+			case <-ctx.Done():
+				return false, ctx.Err()
+			}
+			select {
+			case yes := <-c.approval:
+				return yes, nil
+			case <-ctx.Done():
+				return false, ctx.Err()
+			}
+		}
+		progress := func(status string) {
+			select {
+			case c.events <- applicationReconnectMsg{generation: c.generation, status: status}:
+			case <-ctx.Done():
+			}
+		}
+		_, err = prepare(ctx, cfg, confirm, progress)
+		if err != nil {
+			c.err = err
+			return
+		}
+		c.tunnel, c.err = Connect(ctx, io.Discard, path, deps)
+	}()
+	return c.next()
 }
 func (m *applicationModel) connectionMessage(msg applicationConnectionMsg) tea.Cmd {
 	c := m.connection
@@ -92,7 +213,8 @@ func (m *applicationModel) connectionMessage(msg applicationConnectionMsg) tea.C
 		c.healthy = true
 		m.screen = "dashboard"
 		endpoint := clientprofile.Endpoint{BaseURL: fmt.Sprintf("http://%s:%d/v1", cfg.Route.LocalHost, cfg.Route.LocalPort), Metadata: clientprofile.Metadata{ID: cfg.Model.ID, ContextWindow: cfg.Model.ContextWindow, MaxTokens: cfg.Model.MaxTokens}, Problem: "Checking model identity…"}
-		m.dashboard = dashboardui.NewEndpoint(c.ctx, endpoint, cfg.Provider.InstanceID, m.deps.Dashboard).SetHealthy(true)
+		m.dashboard = dashboardui.NewEndpoint(c.ctx, endpoint, cfg.Provider.InstanceID, m.deps.Dashboard).SetHealthy(true).WithSession(dashboardui.SessionInfo{Provider: cfg.Provider.Kind, StartedAt: time.Now()})
+		m.dashboard = m.dashboard.WithServerLogs(m.serverLogs.Text, m.serverLogs.CheckedAt)
 		m.resizeChild()
 		watch := func() tea.Msg {
 			select {

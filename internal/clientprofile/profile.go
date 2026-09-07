@@ -11,13 +11,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 )
 
 type Integration string
 
 const (
-	Pi       Integration = "Pi / Oh My Pi"
+	Pi       Integration = "Pi"
+	OMP      Integration = "Oh My Pi (OMP)"
 	OpenCode Integration = "OpenCode"
 )
 
@@ -32,8 +34,9 @@ const (
 )
 
 type Target struct {
-	Kind Integration
-	Path string
+	Kind                     Integration
+	Path                     string
+	OMPProfile, OMPConfigDir string
 }
 type Inspection struct {
 	State                                State
@@ -41,15 +44,14 @@ type Inspection struct {
 	Paths                                []string
 }
 type Service struct {
-	Home     string
-	Getenv   func(string) string
-	LookPath func(string) (string, error)
-	Run      func(context.Context, string, []string, []string) error
+	Home      string
+	Getenv    func(string) string
+	LookupEnv func(string) (string, bool)
+	LookPath  func(string) (string, error)
+	Run       func(context.Context, string, []string, []string) error
 }
 
 const provider = "sovereign-qwen"
-
-var packages = []string{"npm:pi-subagents@0.62.0", "npm:oh-my-pi@0.2.0"}
 
 func (s Service) Resolve(kind Integration) (Target, error) {
 	home := s.Home
@@ -69,20 +71,55 @@ func (s Service) Resolve(kind Integration) (Target, error) {
 		getenv = os.Getenv
 	}
 	path := ""
+	target := Target{Kind: kind}
 	switch kind {
 	case Pi:
-		path = getenv("PI_SOVEREIGN_DIR")
+		path = getenv("PI_CODING_AGENT_DIR")
 		if path == "" {
-			path = getenv("PI_CODING_AGENT_DIR")
-		}
-		if path == "" {
-			path = filepath.Join(home, ".pi/profiles/sovereign/agent")
+			path = filepath.Join(home, ".pi/agent")
 		}
 	case OpenCode:
 		path = getenv("SOVEREIGN_OPENCODE_CONFIG")
 		if path == "" {
 			path = filepath.Join(home, ".config/opencode/sovereign.json")
 		}
+	case OMP:
+		lookup := s.LookupEnv
+		if lookup == nil {
+			lookup = os.LookupEnv
+			if s.Getenv != nil {
+				lookup = func(k string) (string, bool) { v := getenv(k); return v, v != "" }
+			}
+		}
+		selected, present := lookup("OMP_PROFILE")
+		if !present {
+			selected = getenv("PI_PROFILE")
+		}
+		target.OMPProfile, err = ompProfileName(selected)
+		if err != nil {
+			return Target{}, err
+		}
+		target.OMPConfigDir = getenv("PI_CONFIG_DIR")
+		if target.OMPConfigDir == "" {
+			target.OMPConfigDir = ".omp"
+		}
+		// Match OMP's path.join(homedir(), PI_CONFIG_DIR), not path.resolve.
+		configRoot := filepath.Join(home, strings.TrimLeft(target.OMPConfigDir, string(os.PathSeparator)))
+		dir := getenv("PI_CODING_AGENT_DIR")
+		if target.OMPProfile != "" {
+			dir = filepath.Join(configRoot, "profiles", target.OMPProfile, "agent")
+		} else {
+			// OMP discards an inherited agent-dir value belonging to PI_PROFILE
+			// when OMP_PROFILE explicitly selects the default profile.
+			legacy, _ := ompProfileName(getenv("PI_PROFILE"))
+			if legacy != "" && dir == filepath.Join(configRoot, "profiles", legacy, "agent") {
+				dir = ""
+			}
+			if dir == "" {
+				dir = filepath.Join(configRoot, "agent")
+			}
+		}
+		path = ompModelsPath(dir)
 	default:
 		return Target{}, fmt.Errorf("unsupported integration")
 	}
@@ -90,13 +127,28 @@ func (s Service) Resolve(kind Integration) (Target, error) {
 		return Target{}, fmt.Errorf("profile must have a dedicated absolute path")
 	}
 	path = filepath.Clean(path)
-	if path == filepath.Join(home, ".pi/agent") || path == filepath.Join(home, ".config/opencode/opencode.json") || path == filepath.Join(home, ".config/opencode/opencode.jsonc") {
+	if path == filepath.Join(home, ".config/opencode/opencode.json") || path == filepath.Join(home, ".config/opencode/opencode.jsonc") {
 		return Target{}, fmt.Errorf("refusing global user profile: %s", path)
 	}
 	if err = safePath(path); err != nil {
 		return Target{}, err
 	}
-	return Target{kind, path}, nil
+	target.Path = path
+	return target, nil
+}
+
+var ompProfilePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+var ompReservedProfile = regexp.MustCompile(`(?i)^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..*)?$`)
+
+func ompProfileName(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "default" {
+		return "", nil
+	}
+	if !ompProfilePattern.MatchString(value) || strings.HasSuffix(value, ".") || ompReservedProfile.MatchString(value) {
+		return "", fmt.Errorf("invalid OMP profile name: %q", value)
+	}
+	return value, nil
 }
 func (s Service) lookup(name string) error {
 	f := s.LookPath
@@ -108,7 +160,7 @@ func (s Service) lookup(name string) error {
 }
 func managed(t Target) []string {
 	if t.Kind == Pi {
-		return []string{"models.json", "settings.json", "npm"}
+		return []string{"models.json"}
 	}
 	return []string{filepath.Base(t.Path)}
 }
@@ -119,16 +171,23 @@ func root(t Target) string {
 	return filepath.Dir(t.Path)
 }
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
-func command(t Target) string {
+func command(t Target, e Endpoint) string {
 	if t.Kind == Pi {
-		return "PI_CODING_AGENT_DIR=" + quote(t.Path) + " pi"
+		return "PI_CODING_AGENT_DIR=" + quote(t.Path) + " pi --provider " + quote(provider) + " --model " + quote(e.ID)
+	}
+	if t.Kind == OMP {
+		configDir := t.OMPConfigDir
+		if configDir == "" {
+			configDir = ".omp"
+		}
+		return "OMP_PROFILE=" + quote(t.OMPProfile) + " PI_PROFILE=" + quote(t.OMPProfile) + " PI_CONFIG_DIR=" + quote(configDir) + " PI_CODING_AGENT_DIR=" + quote(root(t)) + " omp --model " + quote(provider+"/"+e.ID)
 	}
 	return "OPENCODE_CONFIG_CONTENT=\"$(cat " + quote(t.Path) + ")\" QWEN_LOCAL_API_KEY=local-qwen-tunnel opencode"
 }
 
 func (s Service) Inspect(ctx context.Context, t Target, e Endpoint) Inspection {
 	result := Inspection{State: Incomplete}
-	if t.Kind != Pi && t.Kind != OpenCode {
+	if t.Kind != Pi && t.Kind != OpenCode && t.Kind != OMP {
 		result.State = Unreadable
 		result.Detail = "Unsupported integration"
 		return result
@@ -142,6 +201,9 @@ func (s Service) Inspect(ctx context.Context, t Target, e Endpoint) Inspection {
 	}
 	if err := safePath(t.Path); err != nil {
 		return fail(err)
+	}
+	if t.Kind == OMP && ompModelsPath(root(t)) != t.Path {
+		return fail(fmt.Errorf("OMP active provider file changed; inspect and confirm again"))
 	}
 	fingerprint, err := snapshot(ctx, t)
 	if err != nil {
@@ -157,9 +219,6 @@ func (s Service) Inspect(ctx context.Context, t Target, e Endpoint) Inspection {
 	}
 	maps := map[string]map[string]any{}
 	names := managed(t)
-	if t.Kind == Pi {
-		names = names[:2]
-	}
 	missing := false
 	for _, name := range names {
 		v, err := readObject(filepath.Join(root(t), name))
@@ -187,7 +246,7 @@ func (s Service) Inspect(ctx context.Context, t Target, e Endpoint) Inspection {
 	for name, want := range expected {
 		if !reflect.DeepEqual(maps[name], want) {
 			result.State = Different
-			result.Detail = "Endpoint, model, defaults, limits or integration settings differ"
+			result.Detail = "Custom provider endpoint, model or limits differ (existing unrelated configuration is preserved)"
 			return result
 		}
 	}
@@ -196,8 +255,9 @@ func (s Service) Inspect(ctx context.Context, t Target, e Endpoint) Inspection {
 			result.Detail = "Pi CLI is missing; install Pi separately first"
 			return result
 		}
-		if err := checkPackages(t.Path); err != nil {
-			result.Detail = err.Error()
+	} else if t.Kind == OMP {
+		if err := s.lookup("omp"); err != nil {
+			result.Detail = "Standalone Oh My Pi (omp) CLI is missing; install it separately first"
 			return result
 		}
 	} else if err := s.lookup("opencode"); err != nil {
@@ -205,8 +265,8 @@ func (s Service) Inspect(ctx context.Context, t Target, e Endpoint) Inspection {
 		return result
 	}
 	result.State = Ready
-	result.Detail = "Configuration and required dependencies verified"
-	result.Command = command(t)
+	result.Detail = "Custom provider and CLI verified; existing settings, skills and extensions are preserved"
+	result.Command = command(t, e)
 	return result
 }
 func readObject(path string) (map[string]any, error) {
@@ -215,7 +275,12 @@ func readObject(path string) (map[string]any, error) {
 		return nil, err
 	}
 	var v map[string]any
-	if err = json.Unmarshal(raw, &v); err != nil {
+	if filepath.Ext(path) == ".yml" || filepath.Ext(path) == ".yaml" {
+		v, err = readYAMLObject(raw)
+	} else {
+		err = json.Unmarshal(raw, &v)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("unreadable %s: %w", path, err)
 	}
 	if v == nil {
@@ -246,47 +311,8 @@ func render(t Target, e Endpoint, original map[string]map[string]any) (map[strin
 		}
 		return out[name]
 	}
-	if t.Kind == Pi {
-		settings := get("settings.json")
-		settings["defaultProvider"] = provider
-		settings["defaultModel"] = e.ID
-		list, ok := settings["packages"].([]any)
-		if settings["packages"] != nil && !ok {
-			return nil, fmt.Errorf("packages must be an array")
-		}
-		for _, required := range packages {
-			found := false
-			for i, item := range list {
-				source, _ := item.(string)
-				if obj, ok := item.(map[string]any); ok {
-					source, _ = obj["source"].(string)
-				}
-				name := strings.Split(required, "@")[0]
-				if source == name || strings.HasPrefix(source, name+"@") {
-					if entry, ok := item.(map[string]any); ok {
-						entry["source"] = required
-					} else {
-						list[i] = required
-					}
-					found = true
-				}
-			}
-			if !found {
-				list = append(list, required)
-			}
-		}
-		settings["packages"] = list
-		sub, err := object(settings, "subagents")
-		if err != nil {
-			return nil, err
-		}
-		sub["defaultModel"] = provider + "/" + e.ID
-		scope, err := object(sub, "modelScope")
-		if err != nil {
-			return nil, err
-		}
-		mergeOwned(scope, map[string]any{"enforce": true, "strict": true, "allow": []any{provider + "/*"}})
-		models := get("models.json")
+	if t.Kind == Pi || t.Kind == OMP {
+		models := get(managed(t)[0])
 		providers, err := object(models, "providers")
 		if err != nil {
 			return nil, err
@@ -296,7 +322,7 @@ func render(t Target, e Endpoint, original map[string]map[string]any) (map[strin
 			return nil, err
 		}
 		mergeOwned(p, map[string]any{"baseUrl": e.BaseURL, "api": "openai-completions", "apiKey": "local-qwen-tunnel", "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": false}})
-		list, ok = p["models"].([]any)
+		list, ok := p["models"].([]any)
 		if p["models"] != nil && !ok {
 			return nil, fmt.Errorf("provider models must be an array")
 		}
@@ -352,42 +378,6 @@ func mergeOwned(destination, updates map[string]any) {
 			destination[key] = value
 		}
 	}
-}
-func checkPackages(path string) error {
-	for _, p := range []struct{ name, version string }{{"pi-subagents", "0.62.0"}, {"oh-my-pi", "0.2.0"}} {
-		dir := filepath.Join(path, "npm/node_modules", p.name)
-		v, err := readObject(filepath.Join(dir, "package.json"))
-		if err != nil || v["name"] != p.name || v["version"] != p.version {
-			return fmt.Errorf("required package %s@%s is missing or different", p.name, p.version)
-		}
-		if p.name == "oh-my-pi" {
-			if info, err := os.Stat(filepath.Join(dir, "dist/extension.js")); err != nil || !info.Mode().IsRegular() {
-				return fmt.Errorf("Oh My Pi extension is incomplete")
-			}
-		}
-		if p.name == "pi-subagents" {
-			manifest, _ := v["pi"].(map[string]any)
-			entries, _ := manifest["extensions"].([]any)
-			if len(entries) == 0 {
-				return fmt.Errorf("pi-subagents extension manifest is missing")
-			}
-			for _, value := range entries {
-				entry, ok := value.(string)
-				if !ok || entry == "" || filepath.IsAbs(entry) {
-					return fmt.Errorf("unsafe pi-subagents entrypoint")
-				}
-				path := filepath.Join(dir, entry)
-				rel, _ := filepath.Rel(dir, path)
-				if rel == ".." || strings.HasPrefix(rel, "../") {
-					return fmt.Errorf("unsafe pi-subagents entrypoint")
-				}
-				if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-					return fmt.Errorf("pi-subagents extension is incomplete")
-				}
-			}
-		}
-	}
-	return nil
 }
 
 // Never follow symlinks in a confirmed destination or its ancestors.

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -15,19 +14,13 @@ func TestAbsoluteInternalSymlinkCannotReachLiveDataDuringInstall(t *testing.T) {
 	if _, err := s.Install(ctx, target, e, s.Inspect(ctx, target, e)); err != nil {
 		t.Fatal(err)
 	}
-	live := filepath.Join(target.Path, "npm", "preserve.txt")
+	live := filepath.Join(target.Path, "preserve.txt")
 	os.WriteFile(live, []byte("original"), 0600)
-	os.Symlink(live, filepath.Join(target.Path, "npm", "live-link"))
-	os.Remove(filepath.Join(target.Path, "npm/node_modules/oh-my-pi/dist/extension.js"))
+	os.Remove(filepath.Join(target.Path, "models.json"))
+	os.Symlink(live, filepath.Join(target.Path, "models.json"))
 	calls := 0
 	s.Run = func(_ context.Context, _ string, _ []string, env []string) error {
 		calls++
-		for _, value := range env {
-			if strings.HasPrefix(value, "PI_CODING_AGENT_DIR=") {
-				stage := strings.TrimPrefix(value, "PI_CODING_AGENT_DIR=")
-				os.WriteFile(filepath.Join(stage, "npm/live-link"), []byte("modified through link"), 0600)
-			}
-		}
 		return nil
 	}
 	_, err := s.Install(ctx, target, e, s.Inspect(ctx, target, e))
@@ -43,7 +36,7 @@ func TestPiUpdatePreservesNestedProviderAndPackageSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	settingsPath := filepath.Join(target.Path, "settings.json")
-	settings, _ := readObject(settingsPath)
+	settings := map[string]any{}
 	settings["packages"] = []any{map[string]any{"source": "npm:pi-subagents@0.61.0", "extensions": []any{"*.ts"}, "custom": map[string]any{"keep": true}}, "npm:oh-my-pi@0.2.0"}
 	modelsPath := filepath.Join(target.Path, "models.json")
 	models, _ := readObject(modelsPath)
@@ -62,7 +55,7 @@ func TestPiUpdatePreservesNestedProviderAndPackageSettings(t *testing.T) {
 	}
 	settings, _ = readObject(settingsPath)
 	entry, ok := settings["packages"].([]any)[0].(map[string]any)
-	if !ok || entry["source"] != "npm:pi-subagents@0.62.0" || entry["extensions"] == nil || entry["custom"] == nil {
+	if !ok || entry["source"] != "npm:pi-subagents@0.61.0" || entry["extensions"] == nil || entry["custom"] == nil {
 		t.Fatalf("package options lost %#v", settings["packages"])
 	}
 	models, _ = readObject(modelsPath)

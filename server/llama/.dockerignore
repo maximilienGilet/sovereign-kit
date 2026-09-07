@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!smoke.py
+!entrypoint.sh
+!sshd-wrapper.sh
+!install-sshd-wrapper.sh

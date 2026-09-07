@@ -24,6 +24,8 @@ d'accessibilité et d'absence de comparaison restent applicables.
 - Configuration invalide : erreur lisible dans l'accueil ; proposer le setup,
   sans écraser le fichier avant validation explicite de son remplacement.
   Cette confirmation s'applique aussi au remplacement d'une configuration valide.
+  Dans le parcours Vast, obtenir cet accord avant l'envoi de toute création
+  payante, pas seulement avant la sauvegarde finale. Un refus ne loue rien.
 - `help`, `--help` et l'appel sans argument hors terminal affichent l'aide.
 - `setup` et `start` interactifs entrent dans le même cadre, à leur étape
   respective. Les commandes `catalog`, `dashboard`, `tunnel` et `doctor`
@@ -174,6 +176,7 @@ parcours manuel/Vast/custom, retour avec conservation des saisies, changement
 de recette invalidant les résultats, erreurs et réponses asynchrones tardives.
 
 Tester double validation du coût, création incertaine, abandon après création,
+refus du remplacement d'une configuration existante avant toute location,
 refus des clés hôte, perte du tunnel, arrêt des ressources locales et retour
 d'un client. Aucun de ces scénarios ne doit déclencher une deuxième location.
 

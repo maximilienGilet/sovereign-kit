@@ -26,14 +26,16 @@ func TestPackageCancellationTerminatesProcessGroup(t *testing.T) {
 		t.Fatal("package process group did not cancel promptly")
 	}
 }
-func TestMissingSubagentsExtensionIsNotReady(t *testing.T) {
+func TestCustomProviderDoesNotRequireSubagentsExtension(t *testing.T) {
 	s, target, e := fixture(t)
 	ctx := context.Background()
 	if _, err := s.Install(ctx, target, e, s.Inspect(ctx, target, e)); err != nil {
 		t.Fatal(err)
 	}
-	os.Remove(filepath.Join(target.Path, "npm/node_modules/pi-subagents/dist/extension.js"))
-	if got := s.Inspect(ctx, target, e); got.State == Ready {
-		t.Fatal("missing extension marked ready")
+	if _, err := os.Stat(filepath.Join(target.Path, "npm")); !os.IsNotExist(err) {
+		t.Fatal("provider installation created package directory")
+	}
+	if got := s.Inspect(ctx, target, e); got.State != Ready {
+		t.Fatalf("custom provider requires unrelated extension: %#v", got)
 	}
 }

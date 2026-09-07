@@ -1,5 +1,25 @@
 #!/usr/bin/env bash
-# Runs Pi with the isolated Qwen-only profile.
+# Selects Sovereign Kit for this session without replacing the normal Pi environment.
 set -euo pipefail
-export PI_CODING_AGENT_DIR="${PI_SOVEREIGN_DIR:-${PI_CODING_AGENT_DIR:-$HOME/.pi/profiles/sovereign/agent}}"
-exec pi "$@"
+export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+model="$(python3 - "$PI_CODING_AGENT_DIR/models.json" <<'PY'
+import json, os, sys
+try:
+    with open(sys.argv[1]) as source:
+        models = json.load(source)['providers']['sovereign-qwen']['models']
+    ids = {model['id'] for model in models if isinstance(model.get('id'), str) and model['id']}
+    selected = os.environ.get('SOVKIT_MODEL')
+    if selected:
+        if selected not in ids:
+            raise ValueError('SOVKIT_MODEL is not registered in the Sovereign Kit provider')
+    elif len(ids) == 1:
+        selected = next(iter(ids))
+    else:
+        raise ValueError('Choose a registered model using SOVKIT_MODEL, or copy the command from sovkit start')
+    print(selected)
+except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+    print('Pi provider unavailable: '+str(error)+'. Configure Pi from sovkit start.', file=sys.stderr)
+    sys.exit(66)
+PY
+)"
+exec pi "$@" --provider sovereign-qwen --model "$model"

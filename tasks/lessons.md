@@ -1,0 +1,10 @@
+- Keep `catalog` and `dashboard` behavior separate. A dashboard action must cross a real operation boundary through an injected callback; never replace missing behavior with another static detail view.
+- Interactive setup must collect missing provider credentials securely and explain where to obtain them; never terminate with a bare environment-variable requirement.
+- Provider setup must prepare SSH access before provisioning: generate a dedicated key only after confirmation, never overwrite private material, register the public key before instance creation, and reuse existing registered keys.
+- Setup must choose the workload before infrastructure: select a recipe or a Hugging Face model first, let recipes own their GPU requirements, and only ask for GPU choice for custom models. Never lead with raw provider offers.
+- Verify provider units and canonical enum values against the live API and official client before encoding strict filters; never infer binary memory conversion or use marketing names as wire identifiers.
+- Consequential TUI confirmations need a dedicated scannable review surface; never serialize a full configuration into one prompt title or expose raw floating-point precision.
+- Never switch a paid deployment recipe on presentation-layer optimization claims alone; require a digest-pinned runtime, tested launcher, and live hardware gauntlet before making it rentable.
+- Keep public model names separate from backend architecture identifiers; expose `Qwen3.8-27B` to users and reserve `qwen3_5` identifiers for the Transformers/vLLM integration boundary.
+- Visual recipe explanations must describe the selected recipe independently; never turn configuration facts into comparative charts unless the user explicitly asks for comparison.
+- Capacity bars need a documented denominator: scale configured context against the model’s native context limit, and show throughput only when tied to measured evidence for the exact recipe and hardware.

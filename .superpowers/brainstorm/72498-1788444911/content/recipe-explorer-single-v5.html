@@ -1,0 +1,119 @@
+<style>
+  .stage { margin-top:24px; border:1px solid #203044; border-radius:20px; overflow:hidden; background:#050912; box-shadow:0 34px 90px rgba(0,0,0,.42); }
+  .stage-top { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid #203044; background:#0a111d; font-family:"SFMono-Regular",Consolas,monospace; }
+  .brand { color:#67e8f9; letter-spacing:.13em; font-weight:900; }
+  .step { color:#64748b; font-size:12px; }
+  .workspace { display:grid; grid-template-columns:250px 1fr; min-height:650px; font-family:"SFMono-Regular",Consolas,monospace; }
+  .sidebar { padding:16px; border-right:1px solid #203044; background:#070d16; }
+  .sidebar-label { margin:4px 7px 13px; color:#475569; font-size:10px; letter-spacing:.14em; }
+  .recipe { padding:14px; margin-bottom:10px; border:1px solid transparent; border-radius:11px; color:#94a3b8; }
+  .recipe.active { border-color:#0891b2; color:#f8fafc; background:linear-gradient(135deg,rgba(8,145,178,.19),rgba(8,145,178,.04)); box-shadow:inset 3px 0 #22d3ee; }
+  .recipe strong { display:block; font-size:15px; }
+  .recipe small { display:block; margin-top:6px; color:#64748b; line-height:1.45; }
+  .recipe.active small { color:#a5f3fc; }
+  .keyline { margin-top:28px; padding:12px 7px; color:#475569; font-size:11px; line-height:1.8; }
+  .main { padding:24px 26px 20px; background:radial-gradient(circle at 78% 14%,rgba(8,145,178,.12),transparent 28%),#050912; }
+  .hero { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:20px; }
+  .eyebrow { color:#fbbf24; font-size:10px; letter-spacing:.16em; font-weight:800; }
+  .hero h3 { margin:7px 0 5px; color:#f8fafc; font-size:36px; line-height:1; }
+  .hero p { margin:0; color:#a5f3fc; font-size:13px; max-width:690px; }
+  .decision { padding:9px 12px; border:1px solid #164e63; border-radius:999px; background:#08202b; color:#67e8f9; font-size:11px; white-space:nowrap; }
+  .layout { display:grid; grid-template-columns:minmax(420px,1.35fr) minmax(270px,.8fr); gap:14px; }
+  .panel { border:1px solid #1e293b; border-radius:13px; background:rgba(8,15,25,.9); overflow:hidden; }
+  .panel-head { display:flex; justify-content:space-between; gap:12px; padding:12px 14px; border-bottom:1px solid #1e293b; color:#64748b; font-size:10px; }
+  .panel-head strong { color:#e2e8f0; letter-spacing:.07em; }
+  .capacity { padding:20px 18px 16px; }
+  .capacity-row { margin-bottom:24px; }
+  .capacity-row:last-child { margin-bottom:4px; }
+  .capacity-label { display:flex; justify-content:space-between; align-items:end; margin-bottom:9px; color:#64748b; font-size:10px; }
+  .capacity-label b { color:#f8fafc; font-size:24px; line-height:1; }
+  .track { position:relative; height:28px; border:1px solid #1e3a4a; border-radius:5px; background:repeating-linear-gradient(90deg,#0b1520 0,#0b1520 calc(25% - 1px),#233043 calc(25% - 1px),#233043 25%); overflow:hidden; }
+  .fill { position:absolute; inset:0; background:linear-gradient(90deg,rgba(8,145,178,.5),rgba(34,211,238,.9)); box-shadow:0 0 28px rgba(34,211,238,.2); }
+  .fill.violet { background:linear-gradient(90deg,rgba(109,40,217,.48),rgba(167,139,250,.88)); box-shadow:0 0 28px rgba(139,92,246,.2); }
+  .axis { display:flex; justify-content:space-between; margin-top:7px; color:#475569; font-size:9px; }
+  .hardware { grid-column:1; }
+  .hardware-grid { display:grid; grid-template-columns:1.15fr 1fr 1fr; }
+  .hardware-cell { min-height:112px; padding:17px; border-right:1px solid #1e293b; color:#64748b; font-size:10px; }
+  .hardware-cell:last-child { border-right:0; }
+  .hardware-cell b { display:block; margin:9px 0 4px; color:#f8fafc; font-size:22px; }
+  .hardware-cell span { color:#94a3b8; line-height:1.45; }
+  .explain { grid-column:2; grid-row:1 / span 2; display:flex; flex-direction:column; }
+  .why { padding:19px; flex:1; }
+  .why h4 { margin:0 0 15px; color:#f8fafc; font-size:17px; }
+  .reason { position:relative; padding:0 0 17px 25px; color:#94a3b8; font-size:12px; line-height:1.5; }
+  .reason:before { content:""; position:absolute; left:0; top:4px; width:10px; height:10px; border:2px solid #22d3ee; border-radius:3px; }
+  .reason strong { display:block; color:#dbeafe; margin-bottom:3px; }
+  .warning { margin-top:7px; padding:13px; border-left:3px solid #f59e0b; background:#1b1509; color:#fcd34d; font-size:11px; line-height:1.45; }
+  .topology { margin-top:auto; padding:15px 18px; border-top:1px solid #1e293b; background:#070d16; }
+  .topology-label { color:#475569; font-size:9px; letter-spacing:.1em; }
+  .flow { display:flex; align-items:center; gap:8px; margin-top:11px; color:#cbd5e1; font-size:10px; }
+  .node { padding:8px; border:1px solid #334155; border-radius:6px; background:#0b1420; }
+  .arrow { color:#22d3ee; }
+  .action { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-top:16px; padding-top:14px; border-top:1px solid #172033; color:#64748b; font-size:11px; }
+  .button { padding:10px 17px; border-radius:8px; background:#0891b2; color:#ecfeff; font-weight:800; box-shadow:0 0 24px rgba(8,145,178,.26); }
+  .rationale { margin:18px 0 0; padding:16px 18px; border:1px solid #263244; border-radius:12px; background:#0a111d; color:#94a3b8; line-height:1.55; }
+  .rationale strong { color:#f8fafc; }
+  .approve { margin-top:14px; padding:18px 20px; border:1px solid #155e75; border-radius:12px; background:#071a24; cursor:pointer; color:#a5f3fc; }
+  .approve.selected { border-color:#67e8f9; box-shadow:0 0 0 2px rgba(34,211,238,.18); }
+  .approve strong { display:block; color:#f8fafc; margin-bottom:5px; }
+  @media (max-width:900px) { .workspace,.layout { grid-template-columns:1fr; } .sidebar { border-right:0; border-bottom:1px solid #203044; } .explain { grid-column:1; grid-row:auto; } .hardware { grid-column:1; } .hero { flex-direction:column; } }
+</style>
+<h2>Une recette, son profil, sa raison d’être</h2>
+<p class="subtitle">Aucune comparaison. La sélection change tout le tableau de bord et chaque graphique décrit uniquement la recette active.</p>
+<div class="stage">
+  <div class="stage-top"><span class="brand">SOVEREIGN KIT / RECIPE LAB</span><span class="step">CHOIX 01 — RECETTE</span></div>
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="sidebar-label">RECETTES DISPONIBLES</div>
+      <div class="recipe active"><strong>01  Qwen Solo</strong><small>Individuel · RTX 5090<br>Expérimental</small></div>
+      <div class="recipe"><strong>02  Qwen Studio</strong><small>Long contexte · RTX PRO 6000<br>Référence</small></div>
+      <div class="recipe"><strong>03  Hugging Face</strong><small>Modèle et matériel personnalisés</small></div>
+      <div class="keyline">↑↓ NAVIGUER<br>ENTRÉE CHOISIR<br>I EXPLIQUER<br>ÉCHAP ANNULER</div>
+    </aside>
+    <main class="main">
+      <div class="hero">
+        <div><div class="eyebrow">EXPÉRIMENTAL · RECETTE INTÉGRÉE</div><h3>Qwen Solo</h3><p>Route Qwen privée prévue pour un développeur et une seule requête active.</p></div>
+        <div class="decision">PROFIL INDIVIDUEL</div>
+      </div>
+      <div class="layout">
+        <section class="panel">
+          <div class="panel-head"><strong>CAPACITÉS CONFIGURÉES</strong><span>échelles propres à chaque métrique</span></div>
+          <div class="capacity">
+            <div class="capacity-row">
+              <div class="capacity-label"><span>FENÊTRE DE CONTEXTE</span><b>32 768 tokens</b></div>
+              <div class="track"><div class="fill"></div></div>
+              <div class="axis"><span>0</span><span>8 192</span><span>16 384</span><span>24 576</span><span>32 768 tokens</span></div>
+            </div>
+            <div class="capacity-row">
+              <div class="capacity-label"><span>SORTIE MAXIMALE</span><b>4 096 tokens</b></div>
+              <div class="track"><div class="fill violet"></div></div>
+              <div class="axis"><span>0</span><span>1 024</span><span>2 048</span><span>3 072</span><span>4 096 tokens</span></div>
+            </div>
+          </div>
+        </section>
+        <section class="panel hardware">
+          <div class="panel-head"><strong>EMPREINTE DE DÉPLOIEMENT</strong><span>minimums et limites de cette recette</span></div>
+          <div class="hardware-grid">
+            <div class="hardware-cell">ACCÉLÉRATEUR<b>1× RTX 5090</b><span>modèle GPU strict</span></div>
+            <div class="hardware-cell">VRAM MINIMALE<b>32 Go</b><span>capacité exigée</span></div>
+            <div class="hardware-cell">DISQUE MINIMAL<b>100 Go</b><span>stockage exigé</span></div>
+          </div>
+        </section>
+        <section class="panel explain">
+          <div class="panel-head"><strong>POURQUOI L’UTILISER ?</strong><span>décision guidée</span></div>
+          <div class="why">
+            <h4>Choisis Qwen Solo si…</h4>
+            <div class="reason"><strong>Usage individuel</strong>Tu veux une route privée pensée pour une seule session active.</div>
+            <div class="reason"><strong>Contexte 32K suffisant</strong>Ton travail tient dans une fenêtre maximale de 32 768 tokens.</div>
+            <div class="reason"><strong>Matériel précis disponible</strong>Tu veux déployer Qwen3.8-27B-NVFP4 sur une RTX 5090 avec 32 Go de VRAM.</div>
+            <div class="warning">Preuve historique uniquement. Cette recette reste expérimentale et doit être revalidée avant un positionnement de production.</div>
+          </div>
+          <div class="topology"><div class="topology-label">ROUTE TECHNIQUE</div><div class="flow"><span class="node">Qwen3.8-27B</span><span class="arrow">→</span><span class="node">SGLang</span><span class="arrow">→</span><span class="node">RTX 5090</span></div></div>
+        </section>
+      </div>
+      <div class="action"><span>Le prix réel sera affiché après le scan Vast.</span><span class="button">UTILISER QWEN SOLO  ↵</span></div>
+    </main>
+  </div>
+</div>
+<div class="rationale"><strong>Area chart :</strong> je ne le recommande pas ici. Une area chart implique une série ordonnée ou une évolution. Les recettes n’exposent que des valeurs statiques ; en dessiner une inventerait une tendance. Les barres capacitaires et le schéma de route restent visuels sans déformer les données.</div>
+<div class="approve option" data-choice="approve-single-recipe-dashboard" onclick="toggleSelect(this)"><strong>Valider cette direction</strong>Un tableau de bord par recette, des barres absolues, un bloc « pourquoi », aucun comparatif.</div>

@@ -19,6 +19,36 @@ func endpointFixture() clientprofile.Endpoint {
 	return clientprofile.Endpoint{BaseURL: "http://127.0.0.1:30000/v1", Metadata: clientprofile.Metadata{ID: "owner/solo", ContextWindow: 32768, MaxTokens: 4096}}
 }
 
+func TestEachClientHasIndependentReadOnlyInspection(t *testing.T) {
+	for index, want := range []clientprofile.Integration{clientprofile.Pi, clientprofile.OMP, clientprofile.OpenCode} {
+		t.Run(string(want), func(t *testing.T) {
+			m := NewEndpoint(context.Background(), endpointFixture(), 0, Dependencies{
+				Resolve: func(kind clientprofile.Integration) (clientprofile.Target, error) {
+					return clientprofile.Target{Kind: kind, Path: "/temporary/config"}, nil
+				},
+				Inspect: func(_ context.Context, target clientprofile.Target, _ clientprofile.Endpoint) clientprofile.Inspection {
+					if target.Kind != want {
+						t.Fatalf("inspected %s, want %s", target.Kind, want)
+					}
+					return clientprofile.Inspection{State: clientprofile.Absent}
+				},
+				Install: func(context.Context, clientprofile.Target, clientprofile.Endpoint, clientprofile.Inspection) (clientprofile.Inspection, error) {
+					t.Fatal("navigation wrote configuration")
+					return clientprofile.Inspection{}, nil
+				},
+			}).SetHealthy(true)
+			for count := 0; count < index+3; count++ {
+				m, _ = key(m, tea.KeyDown)
+			}
+			m, cmd := key(m, tea.KeyEnter)
+			m = result(m, cmd)
+			if m.page != "confirm" || m.confirm {
+				t.Fatal("inspection must request confirmation with cancel selected")
+			}
+		})
+	}
+}
+
 func TestSavedMetadataIsNotPresentedAsDiscoveredIdentity(t *testing.T) {
 	e := endpointFixture()
 	e.Problem = "Checking model identity…"
@@ -32,7 +62,7 @@ func TestInitialDiscoverySurvivesOpeningIntegration(t *testing.T) {
 	e := endpointFixture()
 	e.Problem = "Checking model identity…"
 	m := NewEndpoint(context.Background(), e, 0, Dependencies{Discover: func(context.Context, string, clientprofile.Metadata) clientprofile.Endpoint { return endpointFixture() }, Resolve: func(k clientprofile.Integration) (clientprofile.Target, error) {
-		return clientprofile.Target{k, "/tmp/fixture"}, nil
+		return clientprofile.Target{Kind: k, Path: "/tmp/fixture"}, nil
 	}, Inspect: func(context.Context, clientprofile.Target, clientprofile.Endpoint) clientprofile.Inspection {
 		return clientprofile.Inspection{State: clientprofile.Absent}
 	}}).SetHealthy(true)
@@ -95,7 +125,7 @@ func TestReadyBypassesInstallAndCopiesRawValuesWithFeedback(t *testing.T) {
 	for _, copyErr := range []error{nil, errors.New("clipboard unavailable")} {
 		copied := ""
 		m := NewEndpoint(context.Background(), endpointFixture(), 0, Dependencies{Copy: func(v string) error { copied = v; return copyErr }, Resolve: func(k clientprofile.Integration) (clientprofile.Target, error) {
-			return clientprofile.Target{k, "/tmp/profile"}, nil
+			return clientprofile.Target{Kind: k, Path: "/tmp/profile"}, nil
 		}, Inspect: func(context.Context, clientprofile.Target, clientprofile.Endpoint) clientprofile.Inspection {
 			return clientprofile.Inspection{State: clientprofile.Ready, Command: "PI_CODING_AGENT_DIR='/tmp/profile' pi"}
 		}, Install: func(context.Context, clientprofile.Target, clientprofile.Endpoint, clientprofile.Inspection) (clientprofile.Inspection, error) {
@@ -142,7 +172,7 @@ func TestInstallFailureAndStaleResultsNeverUnlockCommand(t *testing.T) {
 }
 func TestNarrowDashboardScrollsAndMissingMetadataBlocksConfirmation(t *testing.T) {
 	m := NewEndpoint(context.Background(), clientprofile.Endpoint{BaseURL: "http://127.0.0.1:30000/v1", LimitsProblem: "Limits missing"}, 0, Dependencies{Resolve: func(k clientprofile.Integration) (clientprofile.Target, error) {
-		return clientprofile.Target{k, "/tmp/fixture"}, nil
+		return clientprofile.Target{Kind: k, Path: "/tmp/fixture"}, nil
 	}, Inspect: func(context.Context, clientprofile.Target, clientprofile.Endpoint) clientprofile.Inspection {
 		return clientprofile.Inspection{State: clientprofile.Absent}
 	}}).SetHealthy(true)

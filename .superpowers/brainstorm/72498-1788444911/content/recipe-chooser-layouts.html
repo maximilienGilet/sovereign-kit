@@ -1,0 +1,111 @@
+<style>
+  :root { color-scheme: dark; }
+  .concept-grid { display:grid; gap:28px; margin-top:28px; }
+  .concept { border:1px solid #293241; border-radius:18px; overflow:hidden; background:#0b1018; cursor:pointer; transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease; }
+  .concept:hover { transform:translateY(-2px); border-color:#60a5fa; }
+  .concept.selected { border-color:#22d3ee; box-shadow:0 0 0 2px rgba(34,211,238,.18),0 20px 60px rgba(0,0,0,.28); }
+  .concept-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:20px 22px; border-bottom:1px solid #202938; background:#111827; }
+  .concept-head h3 { margin:0 0 6px; color:#f8fafc; }
+  .concept-head p { margin:0; color:#94a3b8; }
+  .pick { min-width:34px; height:34px; display:grid; place-items:center; border:1px solid #334155; border-radius:10px; color:#67e8f9; font-weight:800; }
+  .terminal { padding:22px; font-family:"SFMono-Regular",Consolas,monospace; color:#dbeafe; background:radial-gradient(circle at 16% 30%,rgba(14,116,144,.13),transparent 30%),#060a10; min-height:360px; }
+  .term-title { display:flex; justify-content:space-between; color:#67e8f9; font-weight:800; letter-spacing:.08em; text-transform:uppercase; margin-bottom:14px; }
+  .shell { border:1px solid #263244; border-radius:12px; overflow:hidden; }
+  .shell-bar { padding:9px 13px; background:#101827; color:#64748b; font-size:12px; }
+  .split-shell { display:grid; grid-template-columns:230px 1fr; min-height:285px; }
+  .rail { border-right:1px solid #263244; padding:12px; background:#0b111b; }
+  .recipe-row { padding:11px 12px; border-radius:8px; margin-bottom:8px; color:#94a3b8; }
+  .recipe-row.active { background:#122638; color:#ecfeff; border:1px solid #155e75; }
+  .status { display:block; color:#fbbf24; font-size:10px; margin-top:5px; letter-spacing:.08em; }
+  .detail { padding:18px 20px; }
+  .detail h4 { margin:0; font-size:24px; color:#f8fafc; }
+  .purpose { color:#a5f3fc; margin:7px 0 16px; }
+  .visual-line { display:grid; grid-template-columns:1fr auto 1fr auto 1fr; align-items:center; gap:10px; margin:18px 0; }
+  .node { border:1px solid #334155; border-radius:10px; padding:14px 10px; text-align:center; background:#0d1521; }
+  .node strong { display:block; color:#fff; font-size:18px; }
+  .arrow { color:#22d3ee; }
+  .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .metric { padding:10px; border-top:2px solid #164e63; background:#0c141f; color:#94a3b8; font-size:11px; }
+  .metric strong { display:block; color:#f1f5f9; font-size:16px; margin-top:4px; }
+  .why { margin-top:14px; padding:11px 13px; border-left:3px solid #22d3ee; color:#cbd5e1; background:#0c1822; }
+  .card-shell { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:18px; min-height:285px; }
+  .recipe-card { position:relative; border:1px solid #2b3748; border-radius:12px; padding:18px; background:#0b111b; }
+  .recipe-card.featured { border-color:#155e75; background:linear-gradient(145deg,#0c1a24,#0b111b); }
+  .recipe-card h4 { margin:0 0 4px; color:#fff; font-size:20px; }
+  .big-number { font-size:52px; line-height:1; font-weight:900; color:#67e8f9; margin:22px 0 4px; }
+  .matrix { display:grid; grid-template-columns:1.2fr repeat(3,1fr); padding:18px; min-height:285px; align-content:center; }
+  .cell { padding:12px; border-bottom:1px solid #263244; color:#94a3b8; }
+  .cell.header { color:#f8fafc; font-weight:800; border-bottom-color:#475569; }
+  .cell.good { color:#67e8f9; }
+  .recommend { display:inline-block; margin-top:14px; padding:7px 10px; border-radius:999px; background:#083344; color:#67e8f9; font-size:12px; font-weight:700; }
+  @media (max-width:760px) { .split-shell,.card-shell { grid-template-columns:1fr; } .rail { border-right:0; border-bottom:1px solid #263244; } .metrics { grid-template-columns:1fr 1fr; } .visual-line { grid-template-columns:1fr; } .arrow { transform:rotate(90deg); text-align:center; } .matrix { grid-template-columns:1fr 1fr; } }
+</style>
+<h2>Choix initial de recette</h2>
+<p class="subtitle">Trois directions. Toutes utilisent les vraies différences des recettes actuelles, sans inventer de benchmark ni de prix.</p>
+<div class="concept-grid">
+  <div class="concept option" data-choice="explorer" onclick="toggleSelect(this)">
+    <div class="concept-head">
+      <div><h3>A — Explorateur guidé</h3><p>Liste compacte à gauche, grand explicateur vivant à droite. Recommandé.</p></div>
+      <div class="pick">A</div>
+    </div>
+    <div class="terminal">
+      <div class="term-title"><span>Sovereign Kit / Recipe Lab</span><span>1 sur 3</span></div>
+      <div class="shell">
+        <div class="shell-bar">↑↓ naviguer · Entrée choisir · i détails</div>
+        <div class="split-shell">
+          <div class="rail">
+            <div class="recipe-row active">Qwen Solo<span class="status">EXPÉRIMENTAL · 1× RTX 5090</span></div>
+            <div class="recipe-row">Qwen Studio<span class="status" style="color:#67e8f9">RÉFÉRENCE · RTX PRO 6000</span></div>
+            <div class="recipe-row">Modèle Hugging Face<span class="status" style="color:#94a3b8">PERSONNALISÉ</span></div>
+          </div>
+          <div class="detail">
+            <h4>Qwen Solo</h4>
+            <div class="purpose">Pour un développeur seul qui privilégie une seule session privée sur une carte accessible.</div>
+            <div class="visual-line">
+              <div class="node"><span>Modèle</span><strong>Qwen 27B</strong></div><div class="arrow">→</div>
+              <div class="node"><span>VRAM minimale</span><strong>32 Go</strong></div><div class="arrow">→</div>
+              <div class="node"><span>Profil</span><strong>1 requête</strong></div>
+            </div>
+            <div class="metrics"><div class="metric">CONTEXTE<strong>32 768</strong></div><div class="metric">SORTIE MAX<strong>4 096</strong></div><div class="metric">GPU<strong>RTX 5090</strong></div><div class="metric">DISQUE<strong>100 Go</strong></div></div>
+            <div class="why"><strong>Pourquoi la choisir :</strong> charge individuelle, coût matériel contenu, aucune concurrence entre utilisateurs.</div>
+          </div>
+        </div>
+      </div>
+      <span class="recommend">Meilleure compréhension + comparaison rapide</span>
+    </div>
+  </div>
+
+  <div class="concept option" data-choice="cards" onclick="toggleSelect(this)">
+    <div class="concept-head">
+      <div><h3>B — Cartes de scénarios</h3><p>Deux grandes histoires côte à côte. Plus spectaculaire, moins dense.</p></div>
+      <div class="pick">B</div>
+    </div>
+    <div class="terminal">
+      <div class="term-title"><span>Quel usage te ressemble ?</span><span>Comparer</span></div>
+      <div class="shell card-shell">
+        <div class="recipe-card featured"><span class="status">SOLO · EXPÉRIMENTAL</span><h4>Poste privé individuel</h4><div class="big-number">1×</div><p>RTX 5090 · 32 Go VRAM</p><div class="why">Une session active, contexte 32K. Choisir pour réduire le matériel requis.</div></div>
+        <div class="recipe-card"><span class="status" style="color:#67e8f9">STUDIO · RÉFÉRENCE</span><h4>Long contexte partagé</h4><div class="big-number">262K</div><p>contexte · jusqu’à 5 requêtes</p><div class="why">Choisir pour de gros corpus ou plusieurs usages concurrents. Exige 96 Go VRAM.</div></div>
+      </div>
+      <span class="recommend">Impact visuel maximal, comparaison moins précise</span>
+    </div>
+  </div>
+
+  <div class="concept option" data-choice="matrix" onclick="toggleSelect(this)">
+    <div class="concept-head">
+      <div><h3>C — Matrice de décision</h3><p>Tout comparer d’un regard. Très rationnel, moins immersif.</p></div>
+      <div class="pick">C</div>
+    </div>
+    <div class="terminal">
+      <div class="term-title"><span>Comparer les recettes</span><span>↑↓ sélectionner</span></div>
+      <div class="shell matrix">
+        <div class="cell header">Critère</div><div class="cell header">Solo</div><div class="cell header">Studio</div><div class="cell header">Hugging Face</div>
+        <div class="cell">Idéal pour</div><div class="cell good">Usage individuel</div><div class="cell good">Long contexte / concurrence</div><div class="cell">Besoin spécifique</div>
+        <div class="cell">Contexte</div><div class="cell">32 768</div><div class="cell good">262 144</div><div class="cell">Selon modèle</div>
+        <div class="cell">Requêtes simultanées</div><div class="cell">1</div><div class="cell good">5</div><div class="cell">À configurer</div>
+        <div class="cell">VRAM minimale</div><div class="cell good">32 Go</div><div class="cell">96 Go</div><div class="cell">À définir</div>
+        <div class="cell">Niveau de preuve</div><div class="cell">Expérimental</div><div class="cell good">Référence</div><div class="cell">Non revue</div>
+      </div>
+      <span class="recommend">Comparaison la plus efficace, personnalité visuelle limitée</span>
+    </div>
+  </div>
+</div>

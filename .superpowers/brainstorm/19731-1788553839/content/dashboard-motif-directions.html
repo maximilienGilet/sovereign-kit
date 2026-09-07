@@ -1,0 +1,73 @@
+<style>
+  .motifs{display:grid;grid-template-columns:repeat(3,minmax(300px,1fr));gap:18px;align-items:start}.motif{cursor:pointer;border:1px solid #29444b;border-radius:10px;overflow:hidden;background:#030606;transition:.18s}.motif:hover,.motif.selected{border-color:#60dbc0;box-shadow:0 0 0 1px #60dbc0,0 0 26px rgba(96,219,192,.12);transform:translateY(-2px)}
+  .term{padding:15px;min-height:430px;white-space:pre;overflow:hidden;background:#020404;color:#dbe2e2;font:12.5px/1.38 ui-monospace,SFMono-Regular,Menlo,monospace}.c{color:#60dbc0}.b{color:#56b6d8}.d{color:#61757c}.w{color:#f0f6f5}.copy{padding:14px 16px 17px;border-top:1px solid #17272c}.copy h3{margin:0 0 6px}.copy p{margin:0;color:#91a3a8}.rec{color:#60dbc0;font-size:11px;letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px}@media(max-width:1100px){.motifs{grid-template-columns:1fr}.term{min-height:auto}}
+</style>
+<h2>Quel rôle pour le motif Sovereign ?</h2>
+<p class="subtitle">Le graphe reste le héros. Le motif exprime la vie du modèle uniquement par la lumière, sans prétendre mesurer le débit.</p>
+<div class="motifs">
+  <div class="motif" data-choice="living-core" onclick="toggleSelect(this)">
+    <div class="term"><span class="c">PRIVATE ENDPOINT</span>   <span class="c">● HEALTHY</span>   <span class="w">2 active</span>
+
+╭─ <span class="c">GENERATION VELOCITY</span> ───╮   <span class="b">    ····</span>
+│ <span class="w">48.7 tok/s</span>     <span class="d">avg 43.1</span> │   <span class="b">  ·╱    ╲·</span>
+│                              │   <span class="c">·╱  ◇◇  ╲·</span>
+│ <span class="c">⠀⠀⠀⠀⠀⠀⠀⠀⣠⠶⠛⠉⠙⢦⠀⠀⠀⠀</span> │   <span class="c">·╲  ◇◇  ╱·</span>
+│ <span class="c">⠀⢀⣀⠀⢀⡤⠞⠁⠀⠀⠀⠀⠀⠈⢧⣀⣀</span> │   <span class="b">  ·╲    ╱·</span>
+│ <span class="b">⠚⠉⠈⠙⠲⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙</span> │   <span class="b">    ····</span>
+│ <span class="d">−10m        −5m          now</span> │   <span class="d">  INFERENCE</span>
+╰──────────────────────────────╯
+
+╭─ <span class="c">NOW</span> ──────╮ ╭─ <span class="c">SESSION</span> ─────────────╮
+│ prompt <span class="w">812</span> │ │ RTX 5090 · France     │
+│ KV     <span class="w">68%</span> │ │ 01:47:23 · $0.36/hour │
+╰──────────────╯ ╰──────────────────────╯
+
+<span class="d">The inner facets breathe only while requests are active.</span></div>
+    <div class="copy"><div class="rec">Recommandé</div><h3>A · Living Core</h3><p>Un petit cristal suspendu à côté du scope. Stable au repos, respiration lumineuse pendant l’inférence, flash bref sur une nouvelle requête.</p></div>
+  </div>
+
+  <div class="motif" data-choice="signal-beacon" onclick="toggleSelect(this)">
+    <div class="term"><span class="c">PRIVATE ENDPOINT</span>              <span class="c">● HEALTHY</span>
+
+ <span class="b">╱╲</span>  ╭─ <span class="c">GENERATION VELOCITY</span> ───────────╮
+<span class="b">╱</span><span class="c">◇◇</span><span class="b">╲</span> │ <span class="w">48.7 tok/s</span>             <span class="d">peak 61.2</span> │
+<span class="b">╲</span><span class="c">◇◇</span><span class="b">╱</span> │                                    │
+ <span class="b">╲╱</span>  │ <span class="c">⠀⠀⠀⠀⠀⠀⠀⠀⣠⠶⠛⠉⠙⢦⠀⠀⠀⠀⠀⠀</span> │
+ <span class="d">│</span>   │ <span class="c">⠀⢀⣀⠀⢀⡤⠞⠁⠀⠀⠀⠀⠀⠈⢧⣀⣀⠀⠀</span> │
+ <span class="c">◆</span>   │ <span class="b">⠚⠉⠈⠙⠲⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙</span> │
+ <span class="d">│</span>   │ <span class="d">−10m          −5m            now</span> │
+ <span class="d">│</span>   ╰────────────────────────────────────╯
+ <span class="d">│</span>
+ <span class="d">│</span>   <span class="c">NOW</span>       prompt 812 t/s · KV 68%
+ <span class="d">│</span>   <span class="c">SESSION</span>   2 active · 0 queued
+ <span class="d">│</span>   <span class="c">INSTANCE</span>  RTX 5090 · France
+
+
+
+<span class="d">Activity travels down the beacon into the metrics.</span></div>
+    <div class="copy"><h3>B · Signal Beacon</h3><p>Le cristal devient une colonne d’état qui relie visuellement santé, graphe et métriques. Très identitaire, plus présent dans la composition.</p></div>
+  </div>
+
+  <div class="motif" data-choice="crystal-watermark" onclick="toggleSelect(this)">
+    <div class="term"><span class="c">◇ SOVEREIGN</span> / PRIVATE ENDPOINT       <span class="c">● HEALTHY</span>
+
+╭─ <span class="c">GENERATION VELOCITY</span> ──────────────────╮
+│ <span class="w">48.7 tok/s</span>                   <span class="d">avg 43.1</span> │
+│                                            │
+│  <span class="c">⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠶⠛⠉⠙⢦⠀⠀⠀⠀⠀⠀⠀⠀</span>  │
+│  <span class="c">⠀⠀⢀⣀⠀⠀⢀⡤⠞⠁⠀⠀⠀⠀⠀⠈⢧⣀⣀⠀⠀⠀</span>  │
+│  <span class="b">⣴⠚⠉⠈⠙⠲⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠲⣄</span>  │
+│  <span class="d">−10m            −5m              now</span>  │
+╰────────────────────────────────────────────╯
+
+╭─ <span class="c">INSPECTOR</span> ───────────────────────────╮
+│ 2 active · 0 queued · prompt 812 t/s      │
+│ KV <span class="c">███████</span><span class="d">░░░</span> 68% · context 131K · out 16K │
+╰───────────────────────────────────────────╯
+
+
+
+<span class="d">The mark flickers once when a request enters the queue.</span></div>
+    <div class="copy"><h3>C · Crystal Mark</h3><p>Le motif devient une signature minimale dans l’en-tête. Le graphe gagne tout l’espace, mais l’effet “wahou” est plus discret.</p></div>
+  </div>
+</div>

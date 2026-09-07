@@ -1,0 +1,5 @@
+# Patch the published runtime without recompiling llama.cpp or changing CUDA.
+FROM ghcr.io/maximiliengilet/sovereign-kit-llama@sha256:b5079e645adf7390cd00119719aa93a2566e0f9d53177bfdc506418ad311f631
+COPY sshd-wrapper.sh /opt/sovereign-kit/llama/sshd-wrapper.sh
+COPY install-sshd-wrapper.sh /opt/sovereign-kit/llama/install-sshd-wrapper.sh
+RUN sh /opt/sovereign-kit/llama/install-sshd-wrapper.sh

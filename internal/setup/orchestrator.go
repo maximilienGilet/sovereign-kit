@@ -3,6 +3,7 @@ package setup
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,6 @@ type VastAPI interface {
 type Operator interface {
 	SelectOffer(context.Context, []OfferView) (vast.Offer, error)
 	ConfirmCost(context.Context, OfferView, int) (bool, error)
-	ConfirmHostKeys(context.Context, []string) (bool, error)
 }
 
 type HostKeys struct {
@@ -181,25 +181,14 @@ func finishVast(ctx context.Context, token string, r recipe.Recipe, options Opti
 	if err := ctx.Err(); err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
-	confirmed := false
-	if checkpoint != nil {
-		confirmed = checkpoint.trustMatches(instance, knownHostsPath, keys.Raw)
+	// Vast instances created by this workflow use trust on first use. Once a
+	// checkpoint contains a digest, it is a pin: changed keys cannot be
+	// interactively re-approved.
+	trustPinned := checkpoint != nil && checkpoint.HostKeysHash != ""
+	if trustPinned && !checkpoint.trustMatches(instance, knownHostsPath, keys.Raw) {
+		return Result{}, paidInstanceError(instanceID, fmt.Errorf("Vast host keys changed; refusing connection"))
 	}
-	if !confirmed {
-		confirmed, err = deps.Operator.ConfirmHostKeys(ctx, keys.Fingerprints)
-	}
-	if err != nil {
-		return Result{}, paidInstanceError(instanceID, err)
-	}
-	if !confirmed {
-		return Result{}, paidInstanceError(instanceID, fmt.Errorf("Vast host-key confirmation was declined"))
-	}
-	if err := ctx.Err(); err != nil {
-		return Result{}, paidInstanceError(instanceID, err)
-	}
-	// Reused trust is already persisted; raw keyscan ordering is not stable.
-	trustReused := checkpoint != nil && checkpoint.trustMatches(instance, knownHostsPath, keys.Raw)
-	if !trustReused {
+	if !trustPinned {
 		if err := deps.TrustStore.Save(knownHostsPath, keys.Raw); err != nil {
 			return Result{}, paidInstanceError(instanceID, err)
 		}
@@ -239,12 +228,22 @@ func finishVast(ctx context.Context, token string, r recipe.Recipe, options Opti
 	notifyProgress(deps.Operator, ProgressSaving, instanceID)
 	cfg := config.VastStudio(instanceID, instance.SSHHost, instance.SSHPort, options.IdentityFile, knownHostsPath)
 	cfg.Model = config.Model{ID: r.Model.Repository, ContextWindow: r.Serve.ContextWindow, MaxTokens: r.Serve.MaxOutputTokens}
+	snapshot, err := json.Marshal(r)
+	if err != nil {
+		return Result{}, err
+	}
+	cfg.DeploymentRecipe = string(snapshot)
 	if err := deps.SaveConfig(options.ConfigPath, cfg); err != nil {
 		return Result{}, paidInstanceError(instanceID, err)
 	}
 	if checkpoint != nil {
 		if err := removeCheckpoint(options.CheckpointPath); err != nil {
 			return Result{}, paidInstanceError(instanceID, err)
+		}
+		if destroyer, ok := api.(InstanceDestroyer); ok {
+			completedOptions := options
+			completedOptions.CheckpointPath = ""
+			notifyRecovery(deps.Operator, newInstanceRecovery(instanceID, destroyer, completedOptions, deps.Clock))
 		}
 	}
 	return Result{InstanceID: instanceID, ConfigPath: options.ConfigPath}, nil
@@ -265,6 +264,8 @@ func selectedView(views []OfferView, id int) (OfferView, bool) {
 
 func waitForRunning(ctx context.Context, api VastAPI, instanceID int, options Options, clock Clock, observed func(vast.Instance)) (vast.Instance, error) {
 	deadline := clock.Now().Add(options.PollTimeout)
+	var nextLogsAt time.Time
+	var daemonLogs string
 	for {
 		if err := ctx.Err(); err != nil {
 			return vast.Instance{}, err
@@ -276,10 +277,26 @@ func waitForRunning(ctx context.Context, api VastAPI, instanceID int, options Op
 		if options.CheckpointPath != "" && instance.ID != instanceID {
 			return vast.Instance{}, fmt.Errorf("provider returned a different instance; refusing SSH connection")
 		}
+		status := strings.ToLower(strings.TrimSpace(instance.Status))
+		if observed != nil && (status == "created" || status == "loading" || status == "creating" || status == "queued" || status == "starting") {
+			if logsAPI, ok := api.(interface {
+				GetDaemonLogs(context.Context, int) (string, error)
+			}); ok {
+				if !clock.Now().Before(nextLogsAt) {
+					nextLogsAt = clock.Now().Add(30 * time.Second)
+					logsCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+					logs, logsErr := logsAPI.GetDaemonLogs(logsCtx, instanceID)
+					cancel()
+					if logsErr == nil && strings.TrimSpace(logs) != "" {
+						daemonLogs = logs
+					}
+				}
+				instance.DaemonLogs = daemonLogs
+			}
+		}
 		if observed != nil {
 			observed(instance)
 		}
-		status := strings.ToLower(strings.TrimSpace(instance.Status))
 		switch status {
 		case "exited", "unknown", "offline":
 			return vast.Instance{}, fmt.Errorf("Vast instance has terminal status %q", instance.Status)
@@ -287,7 +304,7 @@ func waitForRunning(ctx context.Context, api VastAPI, instanceID int, options Op
 			if strings.TrimSpace(instance.SSHHost) != "" && instance.SSHPort > 0 {
 				return instance, nil
 			}
-		case "", "loading", "creating", "queued", "starting":
+		case "", "created", "loading", "creating", "queued", "starting":
 		default:
 			return vast.Instance{}, fmt.Errorf("Vast instance has unusable status %q", instance.Status)
 		}

@@ -1,0 +1,9 @@
+<!DOCTYPE html><html lang="fr"><meta charset="utf-8"><title>Sovereign Kit · atelier visuel</title>
+<style>body{margin:0;background:#071015;color:#d6e5e8;font:15px system-ui}header{padding:20px 28px;border-bottom:1px solid #34515e;display:flex;align-items:center;gap:20px;flex-wrap:wrap}h1{font-size:20px;margin:0}button{background:#11252d;border:1px solid #48606b;color:#b8d2dc;padding:10px 16px;cursor:pointer}button[aria-pressed=true]{border-color:#70dfc7;color:#70dfc7}iframe{width:100%;height:calc(100vh - 92px);border:0}small{color:#93aab4}</style>
+<header><h1>SOVEREIGN / ATELIER VISUEL</h1><button aria-pressed="true" onclick="show('visual-directions.html',this)">Animations du provisioning</button><button aria-pressed="false" onclick="show('confirmation-layouts.html',this)">Layouts de confirmation</button><small>Prototypes interactifs · données simulées</small></header><iframe id="preview" title="Comparaison des propositions Sovereign"></iframe>
+<script>
+function fileURL(name){return location.protocol==='file:'?name:'/files/'+name}
+function show(name,button){document.querySelectorAll('header button').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));document.getElementById('preview').src=fileURL(name)}
+document.getElementById('preview').addEventListener('load',function(){try{const d=this.contentDocument;for(const b of d.querySelectorAll('button')){if(b.textContent==='Revoir les animations')b.onclick=()=>show('visual-directions.html',document.querySelector('header button'))}}catch(e){}});
+show('visual-directions.html',document.querySelector('header button'));
+</script></html>

@@ -145,5 +145,5 @@ les entrées redirigées, EOF et la protection des secrets restent inchangés.
 - [x] Contrat géographique fournisseur vérifié.
 - [x] Spécification relue : pas de comparaison de recettes, pas de score inventé,
   pas de choix automatique ni de création implicite.
-- [ ] Validation de cette spécification écrite par l’utilisateur.
-- [ ] Plan d’implémentation puis réalisation et vérification.
+- [x] Validation de cette spécification écrite par l’utilisateur (« review et implemente »).
+- [x] Plan d’implémentation puis réalisation et vérification : 385 tests, 247 tests avec détection de concurrence, review indépendante et parcours TUI avec fournisseur fictif.

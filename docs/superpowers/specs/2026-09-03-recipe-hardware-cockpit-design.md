@@ -46,8 +46,11 @@ entire screen. Extra space separates groups rather than introducing fake data.
 - Show the exact configured/native values and percentage immediately.
 - Add evenly spaced scale ticks, endpoints, and a marker for the configured
   limit. The marker follows the target, not the animation's intermediate value.
-- Label the source as the pinned model configuration only when the recipe
-  provides that provenance; otherwise say that the source is unknown.
+- The current schema has no native-context provenance field. For this iteration,
+  always label its source `SOURCE UNKNOWN` and describe it as recipe-declared.
+  A pinned repository/revision is shown separately in evidence; it does not
+  establish that the native-context value was verified against that config.
+  Do not add an inferred verification flag or a new provenance schema.
 - Omit the proportional graphic when native context is unknown. Display
   the configured absolute value and `NATIVE CONTEXT UNKNOWN` instead.
 
@@ -65,6 +68,8 @@ entire screen. Extra space separates groups rather than introducing fake data.
 - Use Lip Gloss borders and layout to suggest a physical accelerator module.
 - Show the exact model, count, strict/preferred requirement, minimum VRAM,
   and disk requirement as absolute values.
+- Label VRAM `GB minimum / GPU` and disk `GB minimum / instance`. Include a
+  multi-GPU test so a per-GPU minimum cannot be presented as the total.
 - Do not show utilization, memory allocation, thermal readings, or a percentage.
 - Do not multiply minimum VRAM by GPU count: preserve the existing recipe
   requirement's meaning.
@@ -91,9 +96,21 @@ entire screen. Extra space separates groups rather than introducing fake data.
   only when it fits.
 - At least 134 columns and 30 rows: show the cockpit, with two zones when
   their measured inner widths permit it. Reduce spacing before removing detail.
+- Bound cockpit content to 160 columns. Use two zones only with at least 88
+  inner columns; measure the complete composed height before displaying it.
+  If it exceeds the reserved body area, use the compact presentation. Never
+  clip the action/footer to make a decorative block fit.
+- The compact presentation always retains name/status, configured context,
+  output limit, request limit, GPU contract, VRAM per GPU, disk per instance,
+  unmeasured-throughput state, evidence hint, and selection controls. Remove
+  decorative borders, slots, tick marks, extra spacing, and additional inline
+  guidance in that order. Long text may be ellipsized but is recoverable in `i`.
 - Reserve space for the action and keyboard footer before sizing content.
 - Technical provenance remains fully available through the existing `i`
   viewport rather than being repeated as a large inline audit table.
+- Include the complete recipe name, summary, and every `UseWhen` item in `i`,
+  wrapped rather than ellipsized. This is also the fallback for long names,
+  GPU contracts, and guidance that cannot fit in the cockpit.
 - Huh remains the unchanged accessible/`TERM=dumb` selection path, without
   decorative graphics or animation.
 - All information remains understandable without color.
@@ -117,6 +134,8 @@ entire screen. Extra space separates groups rather than introducing fake data.
 - Verify exact ruler endpoints and target marker for 12.5% and 100% context.
 - Verify one and five configured slots, unknown counts, and a bounded large count.
 - Verify strict, non-strict, and unknown hardware contracts without live metrics.
+- Verify per-GPU VRAM with GPUCount=2 and known native context with unknown source.
+- Add long-name, long-guidance, and wide-character cases to the height checks.
 - Check the custom inspection-first state and complete evidence navigation.
 - Test every builtin at 30x10, 72x24, 108x30, 134x30, 150x34, and 320x80.
 - Check rendered bounds, stable panel edges, visible action/footer, and

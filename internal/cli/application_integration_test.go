@@ -65,23 +65,23 @@ func TestApplicationPaidSetupConnectAndExitKeepRemoteConfiguration(t *testing.T)
 	api := &applicationAPI{}
 	m := vastApplication(t, api)
 	tunnel := &applicationTunnel{done: make(chan error, 1)}
-	m.deps.Start = StartDependencies{NewTunnel: func(context.Context, config.Config, io.Writer) (Tunnel, error) { return tunnel, nil }, Healthcheck: func(context.Context, string) error { return nil }}
+	m.deps.Start = StartDependencies{PrepareConnection: func(_ context.Context, cfg config.Config, _ reconnectConfirmation, _ func(string)) (config.Config, error) {
+		return cfg, nil
+	}, NewTunnel: func(context.Context, config.Config, io.Writer) (Tunnel, error) { return tunnel, nil }, Healthcheck: func(context.Context, string) error { return nil }}
 	advanceVastToCost(t, m)
 	m.acceptPrompt(true)
 	m.acceptPrompt(true) // repeated submit has no pending request
-	nextApplicationPrompt(t, m, promptHostKeys)
-	m.acceptPrompt(true)
+	var connect tea.Cmd
 	for m.session != nil {
-		nextApplicationEvent(t, m)
+		_, connect = m.Update(m.session.next()())
 	}
-	if m.screen != "saved" || api.creates.Load() != 1 {
+	if m.screen != "connecting" || connect == nil || api.creates.Load() != 1 {
 		t.Fatalf("paid setup: creates=%d screen=%s", api.creates.Load(), m.screen)
 	}
 	before, err := os.ReadFile(m.path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, connect := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	updateApplicationCommand(t, m, connect)
 	if m.screen != "dashboard" {
 		t.Fatalf("paid route did not connect: %s", m.View())
@@ -90,7 +90,8 @@ func TestApplicationPaidSetupConnectAndExitKeepRemoteConfiguration(t *testing.T)
 	if !strings.Contains(m.View(), "billing") {
 		t.Fatal("paid exit omits billing warning")
 	}
-	_, quit := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown}) // explicitly leave the remote instance running
+	_, quit := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if quit != nil {
 		m.Update(quit())
 	}

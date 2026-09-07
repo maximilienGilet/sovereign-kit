@@ -64,9 +64,13 @@ type fakeOperator struct {
 	views         []OfferView
 	fingerprints  []string
 	events        *[]string
+	selectCalls   int
+	confirmedView OfferView
+	recovery      InstanceRecovery
 }
 
 func (f *fakeOperator) SelectOffer(_ context.Context, views []OfferView) (vast.Offer, error) {
+	f.selectCalls++
 	f.views = append([]OfferView(nil), views...)
 	if f.selected.ID != 0 {
 		return f.selected, nil
@@ -74,7 +78,8 @@ func (f *fakeOperator) SelectOffer(_ context.Context, views []OfferView) (vast.O
 	return views[0].Offer, nil
 }
 
-func (f *fakeOperator) ConfirmCost(_ context.Context, _ OfferView, _ int) (bool, error) {
+func (f *fakeOperator) ConfirmCost(_ context.Context, view OfferView, _ int) (bool, error) {
+	f.confirmedView = view
 	return f.confirmCost, f.confirmErr
 }
 
@@ -84,6 +89,10 @@ func (f *fakeOperator) ConfirmHostKeys(_ context.Context, fingerprints []string)
 		*f.events = append(*f.events, "confirm-host-keys")
 	}
 	return f.confirmKeys, f.confirmKeyErr
+}
+
+func (f *fakeOperator) InstanceCreated(recovery InstanceRecovery) {
+	f.recovery = recovery
 }
 
 type fakeScanner struct {
@@ -174,6 +183,19 @@ func validRecipe() recipe.Recipe {
 	}
 }
 
+func strictRecipe() recipe.Recipe {
+	r := validRecipe()
+	r.Profile = recipe.Profile{Status: "experimental", Summary: "strict test", Evidence: "strict test evidence"}
+	r.Requirements = recipe.Requirements{
+		GPUModel:      "RTX 5090",
+		GPUCount:      1,
+		StrictGPU:     true,
+		MinimumVRAMGB: 32,
+		MinimumDiskGB: 100,
+	}
+	return r
+}
+
 func testOptions() Options {
 	return Options{ConfigPath: "/tmp/config.toml", IdentityFile: "/tmp/id", KnownHostsDir: "/tmp/known-hosts", OfferLimit: 10, PollInterval: time.Second, PollTimeout: 5 * time.Second}
 }
@@ -204,16 +226,16 @@ func TestRunVastRejectsMissingAPIKey(t *testing.T) {
 	}
 }
 
-func TestRunVastRejectsUnreadableIdentityBeforeSearching(t *testing.T) {
-	api := &fakeVastAPI{}
-	deps := baseDependencies(api, &fakeOperator{}, &fakeScanner{}, &fakeTrustStore{}, &fakeLauncher{}, &fakeClock{now: time.Unix(0, 0)}, nil)
+func TestRunVastRejectsUnreadableIdentityAfterCostBeforeCreation(t *testing.T) {
+	api := &fakeVastAPI{offers: []vast.Offer{{ID: 42, GPUVRAMGB: 96, HourlyUSD: 1}}}
+	deps := baseDependencies(api, &fakeOperator{confirmCost: true}, &fakeScanner{}, &fakeTrustStore{}, &fakeLauncher{}, &fakeClock{now: time.Unix(0, 0)}, nil)
 	deps.ValidateIdentity = func(string) error { return errors.New("identity is unreadable") }
 	_, err := RunVast(context.Background(), "token", validRecipe(), testOptions(), deps)
 	if err == nil || !strings.Contains(err.Error(), "identity is unreadable") {
 		t.Fatalf("expected identity error, got %v", err)
 	}
-	if api.searchCalls != 0 {
-		t.Fatalf("search calls = %d", api.searchCalls)
+	if api.searchCalls != 1 || api.createCalls != 0 {
+		t.Fatalf("search calls=%d create calls=%d", api.searchCalls, api.createCalls)
 	}
 }
 
@@ -227,6 +249,28 @@ func TestRunVastRejectsNoEligibleOffers(t *testing.T) {
 	}
 	if len(operator.views) != 0 {
 		t.Fatalf("operator received %d views", len(operator.views))
+	}
+}
+
+func TestRunVastPassesStrictRequirementsAndRejectsMismatchedHardware(t *testing.T) {
+	api := &fakeVastAPI{offers: []vast.Offer{
+		{ID: 1, GPUName: "RTX 4090", GPUCount: 1, GPUVRAMGB: 32, DiskSpaceGB: 100, HourlyUSD: 0.25},
+		{ID: 2, GPUName: "RTX 5090", GPUCount: 2, GPUVRAMGB: 32, DiskSpaceGB: 100, HourlyUSD: 0.5},
+		{ID: 4, GPUName: "RTX 5090", GPUCount: 1, GPUVRAMGB: 32, DiskSpaceGB: 50, HourlyUSD: 0.6},
+		{ID: 3, GPUName: "RTX 5090", GPUCount: 1, GPUVRAMGB: 32, DiskSpaceGB: 100, HourlyUSD: 0.75},
+	}}
+	operator := &fakeOperator{confirmCost: false}
+	deps := baseDependencies(api, operator, &fakeScanner{}, &fakeTrustStore{}, &fakeLauncher{}, &fakeClock{now: time.Unix(0, 0)}, nil)
+	_, err := RunVast(context.Background(), "token", strictRecipe(), testOptions(), deps)
+	if err == nil || !strings.Contains(err.Error(), "cancel") {
+		t.Fatalf("error=%v", err)
+	}
+	wantRequest := vast.SearchRequest{Limit: 10, GPUModel: "RTX 5090", GPUCount: 1, StrictGPU: true, MinimumVRAMGB: 32, MinimumDiskGB: 100}
+	if !reflect.DeepEqual(api.searchReq, wantRequest) {
+		t.Fatalf("search request=%#v want=%#v", api.searchReq, wantRequest)
+	}
+	if len(operator.views) != 1 || operator.views[0].Offer.ID != 3 || operator.views[0].Recipe.ID != strictRecipe().ID {
+		t.Fatalf("views=%#v", operator.views)
 	}
 }
 
@@ -250,8 +294,44 @@ func TestRunVastSortsOffersAndBuildsCostScenarios(t *testing.T) {
 	if operator.views[1].MonthlyUSD != 912.5 || operator.views[1].AnnualUSD != 10950 {
 		t.Fatalf("cost scenarios = %#v", operator.views[1])
 	}
-	if api.searchReq != (vast.SearchRequest{Limit: 10, MinimumVRAMGB: 96}) {
+	if !reflect.DeepEqual(api.searchReq, vast.SearchRequest{Limit: 10, MinimumVRAMGB: 96, MinimumDiskGB: 120}) {
 		t.Fatalf("search request = %#v", api.searchReq)
+	}
+}
+
+func TestRunVastLegacyAutoSelectStillRequiresExplicitOfferSelection(t *testing.T) {
+	api := &fakeVastAPI{offers: []vast.Offer{
+		{ID: 9, GPUVRAMGB: 96, HourlyUSD: 1.25},
+		{ID: 3, GPUVRAMGB: 96, HourlyUSD: 0.5},
+	}}
+	operator := &fakeOperator{selected: vast.Offer{ID: 9}, confirmCost: false}
+	deps := baseDependencies(api, operator, &fakeScanner{}, &fakeTrustStore{}, &fakeLauncher{}, &fakeClock{now: time.Unix(0, 0)}, nil)
+	options := testOptions()
+	options.AutoSelectOffer = true
+
+	_, err := RunVast(context.Background(), "token", validRecipe(), options, deps)
+	if err == nil || !strings.Contains(err.Error(), "cancel") {
+		t.Fatalf("error=%v", err)
+	}
+	if operator.selectCalls != 1 || operator.confirmedView.Offer.ID != 9 || operator.confirmedView.Recipe.ID != validRecipe().ID {
+		t.Fatalf("select calls=%d confirmed=%#v", operator.selectCalls, operator.confirmedView)
+	}
+}
+
+func TestRunVastKeepsDetailedOperatorOfferSelectionForCustomModel(t *testing.T) {
+	api := &fakeVastAPI{offers: []vast.Offer{
+		{ID: 3, GPUName: "A100", GPUVRAMGB: 96, HourlyUSD: 0.5},
+		{ID: 9, GPUName: "H100", GPUVRAMGB: 96, HourlyUSD: 1.25},
+	}}
+	operator := &fakeOperator{selected: vast.Offer{ID: 9}, confirmCost: false}
+	deps := baseDependencies(api, operator, &fakeScanner{}, &fakeTrustStore{}, &fakeLauncher{}, &fakeClock{now: time.Unix(0, 0)}, nil)
+
+	_, err := RunVast(context.Background(), "token", validRecipe(), testOptions(), deps)
+	if err == nil || !strings.Contains(err.Error(), "cancel") {
+		t.Fatalf("error=%v", err)
+	}
+	if operator.selectCalls != 1 || len(operator.views) != 2 || operator.confirmedView.Offer.ID != 9 {
+		t.Fatalf("select calls=%d views=%#v confirmed=%d", operator.selectCalls, operator.views, operator.confirmedView.Offer.ID)
 	}
 }
 
@@ -269,6 +349,55 @@ func TestRunVastDoesNotCreateWhenCostIsDeclined(t *testing.T) {
 	}
 	if api.createCalls != 0 || scanner.calls != 0 || launcher.calls != 0 || trust.calls != 0 {
 		t.Fatalf("post-decline calls: create=%d scan=%d launch=%d save=%d", api.createCalls, scanner.calls, launcher.calls, trust.calls)
+	}
+}
+
+func TestRunVastPreparesIdentityAfterCostAndBeforeCreate(t *testing.T) {
+	api, operator, _, _, _, _, deps := successfulSetup()
+	events := []string{}
+	api.events = &events
+	operator.confirmedView = OfferView{}
+	deps.PrepareIdentity = func(context.Context) error {
+		events = append(events, "prepare-identity")
+		return nil
+	}
+	deps.ValidateIdentity = func(string) error {
+		events = append(events, "validate-identity")
+		return nil
+	}
+
+	if _, err := RunVast(context.Background(), "token", validRecipe(), testOptions(), deps); err != nil {
+		t.Fatal(err)
+	}
+	prepareIndex, validateIndex, createIndex := -1, -1, -1
+	for index, event := range events {
+		switch event {
+		case "prepare-identity":
+			prepareIndex = index
+		case "validate-identity":
+			validateIndex = index
+		case "create":
+			createIndex = index
+		}
+	}
+	if prepareIndex < 0 || validateIndex <= prepareIndex || createIndex <= validateIndex {
+		t.Fatalf("events=%v", events)
+	}
+}
+
+func TestRunVastDoesNotPrepareIdentityWhenCostIsDeclined(t *testing.T) {
+	api := &fakeVastAPI{offers: []vast.Offer{{ID: 42, GPUVRAMGB: 96, HourlyUSD: 1}}}
+	operator := &fakeOperator{confirmCost: false}
+	deps := baseDependencies(api, operator, &fakeScanner{}, &fakeTrustStore{}, &fakeLauncher{}, &fakeClock{now: time.Unix(0, 0)}, nil)
+	prepareCalls := 0
+	deps.PrepareIdentity = func(context.Context) error {
+		prepareCalls++
+		return nil
+	}
+
+	_, err := RunVast(context.Background(), "token", validRecipe(), testOptions(), deps)
+	if err == nil || prepareCalls != 0 {
+		t.Fatalf("error=%v prepare calls=%d", err, prepareCalls)
 	}
 }
 
@@ -301,9 +430,71 @@ func TestRunVastPollsUntilRunningSSHDetailsExist(t *testing.T) {
 	if result.InstanceID != 987 {
 		t.Fatalf("instance ID = %d", result.InstanceID)
 	}
-	want := []string{"create", "get:loading", "sleep", "get:running", "scan", "confirm-host-keys", "save-known-hosts", "launch-server", "save-config"}
+	want := []string{"create", "get:loading", "sleep", "get:running", "scan", "save-known-hosts", "launch-server", "save-config"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
+func TestRunVastPublishesExactRecoveryAfterCreationEvenWhenWaitingFails(t *testing.T) {
+	api := &recoveryVastAPI{fakeVastAPI: fakeVastAPI{
+		offers:    []vast.Offer{{ID: 42, GPUVRAMGB: 96, HourlyUSD: 1}},
+		createID:  987,
+		instances: []vast.Instance{{ID: 987, Status: "offline"}},
+	}}
+	operator := &fakeOperator{confirmCost: true}
+	deps := baseDependencies(&api.fakeVastAPI, operator, &fakeScanner{}, &fakeTrustStore{}, &fakeLauncher{}, &fakeClock{now: time.Unix(0, 0)}, nil)
+	deps.NewAPI = func(string) VastAPI { return api }
+
+	_, err := RunVast(context.Background(), "token", validRecipe(), testOptions(), deps)
+	if err == nil {
+		t.Fatal("expected waiting failure")
+	}
+	if operator.recovery.InstanceID != 987 || operator.recovery.Destroy == nil {
+		t.Fatalf("recovery=%#v", operator.recovery)
+	}
+}
+
+type recoveryVastAPI struct {
+	fakeVastAPI
+}
+
+func (f *recoveryVastAPI) DestroyInstance(context.Context, int) error { return nil }
+
+func (f *recoveryVastAPI) InstanceExists(context.Context, int) (bool, error) { return false, nil }
+
+func TestWaitForRunningAllowsBlankStatusAsTransient(t *testing.T) {
+	api := &fakeVastAPI{instances: []vast.Instance{{ID: 987, Status: " \t"}, {ID: 987, Status: "loading"}, {ID: 987, Status: "running", SSHHost: "gpu.example", SSHPort: 22}}}
+	instance, err := waitForRunning(context.Background(), api, 987, testOptions(), &fakeClock{now: time.Unix(0, 0)}, nil)
+	if err != nil || instance.ID != 987 {
+		t.Fatalf("instance=%#v err=%v", instance, err)
+	}
+}
+
+func TestWaitForRunningAllowsCreatedStatusAsTransient(t *testing.T) {
+	api := &fakeVastAPI{instances: []vast.Instance{{ID: 987, Status: "created"}, {ID: 987, Status: "loading"}, {ID: 987, Status: "running", SSHHost: "gpu.example", SSHPort: 22}}}
+	instance, err := waitForRunning(context.Background(), api, 987, testOptions(), &fakeClock{now: time.Unix(0, 0)}, nil)
+	if err != nil || instance.ID != 987 {
+		t.Fatalf("instance=%#v err=%v", instance, err)
+	}
+}
+
+func TestWaitForRunningTimesOutOnPersistentlyBlankStatus(t *testing.T) {
+	api := &fakeVastAPI{instances: []vast.Instance{{ID: 987, Status: ""}, {ID: 987, Status: ""}}}
+	options := testOptions()
+	options.PollTimeout = time.Second
+	_, err := waitForRunning(context.Background(), api, 987, options, &fakeClock{now: time.Unix(0, 0)}, nil)
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestWaitForRunningReturnsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := waitForRunning(ctx, &fakeVastAPI{}, 987, testOptions(), &fakeClock{now: time.Unix(0, 0)}, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error=%v", err)
 	}
 }
 
@@ -332,18 +523,18 @@ func TestRunVastTimesOutWithInstanceAndBillingWarning(t *testing.T) {
 	}
 }
 
-func TestRunVastDoesNothingTrustedWhenHostKeysAreDeclined(t *testing.T) {
+func TestRunVastPinsFirstCompleteHostKeySetWithoutConfirmation(t *testing.T) {
 	api := &fakeVastAPI{offers: []vast.Offer{{ID: 42, GPUVRAMGB: 96, HourlyUSD: 1}}, createID: 987, instances: []vast.Instance{{ID: 987, Status: "running", SSHHost: "gpu.example", SSHPort: 22022}}}
 	scanner := &fakeScanner{keys: HostKeys{Raw: []byte("key"), Fingerprints: []string{"SHA256:abc"}}}
 	trust := &fakeTrustStore{}
 	launcher := &fakeLauncher{}
 	deps := baseDependencies(api, &fakeOperator{confirmCost: true, confirmKeys: false}, scanner, trust, launcher, &fakeClock{now: time.Unix(0, 0)}, nil)
 	_, err := RunVast(context.Background(), "token", validRecipe(), testOptions(), deps)
-	if err == nil {
-		t.Fatal("expected cancellation")
+	if err != nil {
+		t.Fatalf("first-use pinning failed: %v", err)
 	}
-	if trust.calls != 0 || launcher.calls != 0 {
-		t.Fatalf("trusted calls after decline: trust=%d launch=%d", trust.calls, launcher.calls)
+	if trust.calls != 1 || launcher.calls != 1 {
+		t.Fatalf("first-use trust not persisted before launch: trust=%d launch=%d", trust.calls, launcher.calls)
 	}
 }
 func TestRunVastDoesNotLaunchWhenTrustPersistenceFails(t *testing.T) {
@@ -372,7 +563,7 @@ func TestRunVastLaunchesOnlyAfterTrustPersistence(t *testing.T) {
 	if _, err := RunVast(context.Background(), "token", validRecipe(), testOptions(), deps); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
-	want := []string{"create", "get:running", "scan", "confirm-host-keys", "save-known-hosts", "launch-server", "save-config"}
+	want := []string{"create", "get:running", "scan", "save-known-hosts", "launch-server", "save-config"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}

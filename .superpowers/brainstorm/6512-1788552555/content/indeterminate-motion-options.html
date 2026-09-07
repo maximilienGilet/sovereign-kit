@@ -1,0 +1,98 @@
+<style>
+  .motion-grid { display:grid; grid-template-columns:repeat(3,minmax(260px,1fr)); gap:18px; margin-top:24px; }
+  .motion-card { border:1px solid #294650; border-radius:12px; padding:16px; background:#020607; cursor:pointer; transition:.2s ease; }
+  .motion-card:hover,.motion-card.selected { border-color:#59d9e9; box-shadow:0 0 28px rgba(89,217,233,.13); transform:translateY(-2px); }
+  .motion-card.recommended { border-color:#3c7b82; }
+  .terminal { overflow:hidden; border:1px solid #183039; border-radius:8px; background:#000; padding:20px 10px; min-height:265px; display:flex; align-items:center; justify-content:center; }
+  .forge { font:15px/1.05 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre; letter-spacing:0; color:#244955; }
+  .forge span { display:inline-block; width:.61em; color:rgb(var(--r,36),var(--g,73),var(--b,85)); text-shadow:0 0 calc(var(--glow,0)*12px) rgba(122,235,247,var(--glow,0)); }
+  .motion-card h3 { color:#dceef0; margin:16px 0 7px; font-size:16px; }
+  .motion-card p { color:#8299a1; margin:0; line-height:1.45; font-size:13px; }
+  .badge { display:inline-block; color:#76e7d0; border:1px solid #2d7065; border-radius:999px; padding:3px 8px; font:11px ui-monospace,monospace; margin-left:8px; }
+  .status { margin-top:14px; color:#5ac9da; font:12px ui-monospace,monospace; }
+  @media(max-width:1050px){.motion-grid{grid-template-columns:1fr}}
+</style>
+
+<h2>Quel mouvement pour le pull indéterminé ?</h2>
+<p class="subtitle">Même géométrie, aucun faux pourcentage. Le mouvement ne modifie que la lumière — plus aucun fragment qui se téléporte.</p>
+
+<div class="motion-grid">
+  <div class="motion-card recommended" data-choice="magnetic-pulse" onclick="toggleSelect(this)">
+    <div class="terminal"><div class="forge" data-mode="pulse"></div></div>
+    <h3>A — Magnetic Pulse <span class="badge">RECOMMANDÉ</span></h3>
+    <p>Une onde lumineuse traverse la cage vers le noyau, puis se dissipe. Fluide, spatialement cohérente et parfaitement indéterminée.</p>
+    <div class="status">PULLING IMAGE · receiving layers…</div>
+  </div>
+  <div class="motion-card" data-choice="edge-circuit" onclick="toggleSelect(this)">
+    <div class="terminal"><div class="forge" data-mode="circuit"></div></div>
+    <h3>B — Edge Circuit</h3>
+    <p>Un courant parcourt continuellement les arêtes du cristal. Plus technique et énergique, mais légèrement plus présent visuellement.</p>
+    <div class="status">PULLING IMAGE · verifying layers…</div>
+  </div>
+  <div class="motion-card" data-choice="breathing-core" onclick="toggleSelect(this)">
+    <div class="terminal"><div class="forge" data-mode="breathe"></div></div>
+    <h3>C — Breathing Core</h3>
+    <p>La cage reste calme tandis que le noyau respire doucement. Le plus élégant et discret, avec moins d’effet « machine en action ».</p>
+    <div class="status">PULLING IMAGE · waiting for provider…</div>
+  </div>
+</div>
+
+<script>
+const art = [
+"                    ·                    ",
+"                 ··· ···                 ",
+"              ···       ···              ",
+"           ···             ···           ",
+"        ···                   ···        ",
+"     ···                         ···     ",
+"  ···································  ",
+"  ·  ···         ·····         ···  ·  ",
+"  ·     ···    ···   ···    ···     ·  ",
+"  ·        ·····   ◇   ·····        ·  ",
+"  ·     ···    ···   ···    ···     ·  ",
+"  ·  ···         ·····         ···  ·  ",
+"  ···································  ",
+"     ···                         ···     ",
+"        ···                   ···        ",
+"           ···             ···           ",
+"              ···       ···              ",
+"                 ··· ···                 ",
+"                    ·                    "
+];
+const cells=[];
+document.querySelectorAll('.forge').forEach((node,forgeIndex)=>{
+  const mode=node.dataset.mode, local=[];
+  art.forEach((line,y)=>{
+    [...line].forEach((ch,x)=>{
+      if(ch===' '){node.append(' ');return}
+      const s=document.createElement('span'); s.textContent=ch; node.append(s);
+      local.push({s,x,y,angle:Math.atan2(y-9,x-20),dist:Math.hypot((x-20)/20,(y-9)/9)});
+    }); node.append('\n');
+  });
+  cells.push({mode,local});
+});
+function clamp(v){return Math.max(0,Math.min(1,v))}
+function frame(ms){
+  const t=ms/1000;
+  cells.forEach(({mode,local})=>local.forEach((c,i)=>{
+    let light=.08;
+    if(mode==='pulse'){
+      const front=1.35-((t*.42)%1.55);
+      light=.07+.93*Math.exp(-Math.pow((c.dist-front)/.13,2));
+    } else if(mode==='circuit'){
+      const p=((c.angle/(Math.PI*2)+1)+(t*.16))%1;
+      light=.08+.9*Math.exp(-Math.pow(Math.min(p,1-p)/.08,2))*(.55+.45*c.dist);
+    } else {
+      const breath=.45+.35*Math.sin(t*2.25);
+      light=.08+clamp(1-c.dist*1.45)*breath;
+    }
+    light=clamp(light);
+    c.s.style.setProperty('--r',Math.round(30+170*light));
+    c.s.style.setProperty('--g',Math.round(69+180*light));
+    c.s.style.setProperty('--b',Math.round(82+173*light));
+    c.s.style.setProperty('--glow',light.toFixed(2));
+  }));
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>

@@ -1,0 +1,43 @@
+version = 1
+id = "qwen-solo-uncensored"
+name = "Qwen Solo Uncensored"
+kind = "gguf-text-generation"
+
+[profile]
+status = "experimental"
+summary = "Qwen3.8 Uncensored GGUF with native MTP on RTX 5090"
+evidence = "Article-aligned experimental configuration; GPU load, long context and throughput not yet validated by Sovereign Kit"
+use_when = [
+  "One private developer session is the target workload",
+  "The Uncensored variant and experimental native MTP are desired",
+  "An RTX 5090 with a CUDA 13.3-compatible driver is available",
+]
+
+[runtime]
+engine = "llama-cpp"
+image = "ghcr.io/maximiliengilet/sovereign-kit-llama@sha256:a9ceb65277f2f4dfd4cc3b5896f4398703e323249dd9bf87eb20b17b9f467239"
+precompiled = true
+source_revision = "86b351fd64d5ebbf1ba795ffd60c8f4a8c958613"
+
+[model]
+repository = "HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF"
+revision = "993a5971fda8f30dd1b7eb2654792ba4415c7460"
+filename = "Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf"
+sha256 = "ba36dc3c2b2ff5e0aa5d71092a8894546996a6a119ae391803dda07cdc08516d"
+native_context_window = 262144
+
+[speculative]
+algorithm = "draft-mtp"
+num_draft_tokens = 2
+
+[serve]
+context_window = 65536
+max_output_tokens = 4096
+max_running_requests = 4
+
+[requirements]
+gpu_model = "RTX 5090"
+gpu_count = 1
+strict_gpu = true
+minimum_vram_gb = 32
+minimum_disk_gb = 100

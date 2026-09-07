@@ -9,6 +9,115 @@ import (
 	"testing"
 )
 
+func TestHasSSHKeyNormalizesTypeAndBlob(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/api/v0/ssh/" {
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("authorization = %q", request.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":7,"key":"ssh-ed25519 QUFBQQ== old-comment"}]`))
+	}))
+	defer server.Close()
+
+	found, err := NewClient(server.URL, "test-token").HasSSHKey(context.Background(), "ssh-ed25519 QUFBQQ== new-comment")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("existing SSH key was not found")
+	}
+}
+
+func TestHasSSHKeyAcceptsECDSAType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"key":"ecdsa-sha2-nistp256 QUFBQQ== old-comment"}]`))
+	}))
+	defer server.Close()
+
+	found, err := NewClient(server.URL, "test-token").HasSSHKey(context.Background(), "ecdsa-sha2-nistp256 QUFBQQ== new-comment")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("existing ECDSA SSH key was not found")
+	}
+}
+
+func TestHasSSHKeyDecodesEnvelopeAndSSHKeyField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ssh_keys":[{"id":7,"ssh_key":"ssh-ed25519 QUFBQQ== stored"}]}`))
+	}))
+	defer server.Close()
+
+	found, err := NewClient(server.URL, "test-token").HasSSHKey(context.Background(), "ssh-ed25519 QUFBQQ== local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("enveloped SSH key was not found")
+	}
+}
+
+func TestHasSSHKeyTreatsNotFoundAsEmptyAccount(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	found, err := NewClient(server.URL, "test-token").HasSSHKey(context.Background(), "ssh-ed25519 QkJCQg==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Fatal("unexpected SSH key match")
+	}
+}
+
+func TestAddSSHKeySendsOnlyPublicKey(t *testing.T) {
+	const publicKey = "ssh-ed25519 QkJCQg== local"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/v0/ssh/" {
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("authorization = %q", request.Header.Get("Authorization"))
+		}
+		body, _ := io.ReadAll(request.Body)
+		if string(body) != `{"ssh_key":"ssh-ed25519 QkJCQg== local"}` {
+			t.Fatalf("request body = %s", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true}`))
+	}))
+	defer server.Close()
+
+	if err := NewClient(server.URL, "test-token").AddSSHKey(context.Background(), publicKey); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSSHKeyPermissionErrorsExplainRequiredScope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+	client := NewClient(server.URL, "test-token")
+
+	_, readErr := client.HasSSHKey(context.Background(), "ssh-ed25519 QUFBQQ==")
+	if readErr == nil || !strings.Contains(readErr.Error(), "user_read") || !strings.Contains(readErr.Error(), "manage-keys") {
+		t.Fatalf("read error=%v", readErr)
+	}
+	writeErr := client.AddSSHKey(context.Background(), "ssh-ed25519 QUFBQQ==")
+	if writeErr == nil || !strings.Contains(writeErr.Error(), "user_write") || !strings.Contains(writeErr.Error(), "manage-keys") {
+		t.Fatalf("write error=%v", writeErr)
+	}
+}
+
 func TestCreateInstanceUsesSSHDirectWireContract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/v0/asks/42" {

@@ -20,6 +20,8 @@ import (
 )
 
 type ApplicationDependencies struct {
+	Recovery  func(context.Context, int) (setup.InstanceRecovery, error)
+	Balance   func(context.Context, string) (float64, error)
 	Setup     SetupDependencies
 	Start     StartDependencies
 	Dashboard dashboardui.Dependencies
@@ -44,6 +46,10 @@ type applicationModel struct {
 	locked, creating            bool
 	instanceID                  int
 	quitting, exitConfirm       bool
+	exitInstance, exitChoice    int
+	exitDestroy                 bool
+	exitError                   string
+	stoppedID                   int
 	afterStop                   string
 	confirmText                 string
 	confirmation                viewport.Model
@@ -64,6 +70,12 @@ type applicationModel struct {
 	serverLogs                  setup.ServerLogs
 	logViewport                 viewport.Model
 	logsExpanded                bool
+	vastBalance                 *float64
+	balanceStarted              bool
+	balanceReading              bool
+	balanceScheduled            bool
+	balanceCtx                  context.Context
+	balanceCancel               context.CancelFunc
 }
 type applicationBegin struct{}
 type applicationChildMsg struct {
@@ -78,6 +90,9 @@ func newApplication(ctx context.Context, path, user, entry string, deps Applicat
 	if deps.Setup.Getenv == nil {
 		deps.Setup.Getenv = os.Getenv
 	}
+	if deps.Balance == nil {
+		deps.Balance = defaultVastBalance
+	}
 	token := deps.Setup.Getenv("VAST_API_KEY")
 	getenv := deps.Setup.Getenv
 	deps.Setup.Getenv = func(key string) string {
@@ -86,7 +101,8 @@ func newApplication(ctx context.Context, path, user, entry string, deps Applicat
 		}
 		return getenv(key)
 	}
-	m := &applicationModel{ctx: ctx, path: path, defaultUser: user, entry: entry, deps: deps, width: 80, height: 24, screen: "home", drafts: make(map[promptKind]any), confirmation: viewport.New(80, 16), recipeViewport: viewport.New(80, 20), diagnostic: viewport.New(80, 20)}
+	balanceCtx, balanceCancel := context.WithCancel(ctx)
+	m := &applicationModel{ctx: ctx, path: path, defaultUser: user, entry: entry, deps: deps, width: 80, height: 24, screen: "home", drafts: make(map[promptKind]any), confirmation: viewport.New(80, 16), recipeViewport: viewport.New(80, 20), diagnostic: viewport.New(80, 20), balanceCtx: balanceCtx, balanceCancel: balanceCancel}
 	m.rememberSecret(token)
 	m.logViewport = viewport.New(80, 16)
 	m.loadConfiguration()
@@ -112,8 +128,22 @@ func RunApplication(ctx context.Context, input io.Reader, output io.Writer, path
 }
 func (m *applicationModel) Init() tea.Cmd { return func() tea.Msg { return applicationBegin{} } }
 func (m *applicationModel) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
-	defer func() { cmd = tea.Batch(cmd, m.reconcileLoader()) }()
+	defer func() { cmd = tea.Batch(cmd, m.reconcileLoader(), m.reconcileVastBalance()) }()
 	switch msg := msg.(type) {
+	case vastBalanceResult:
+		m.balanceReading = false
+		if msg.credentialMissing {
+			m.vastBalance = nil
+		} else if msg.err == nil {
+			amount := msg.amount
+			m.vastBalance = &amount
+		}
+		return m, m.waitVastBalance()
+	case vastBalanceStopped:
+		return m, nil
+	case vastBalanceTick:
+		m.balanceScheduled = false
+		return m, m.readVastBalance()
 	case provisioningTick:
 		return m, m.updateLoader(msg)
 	case applicationRecoveryMsg:
@@ -208,6 +238,10 @@ func (m *applicationModel) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 				m.screen = "saved"
 				m.loadConfiguration()
 				m.status = "Configuration saved — route not verified"
+				cfg, err := config.Load(m.path)
+				if err == nil && cfg.Provider.Kind == "vast" && cfg.Provider.InstanceID > 0 && !m.exitConfirm {
+					return m, m.beginConnection()
+				}
 			}
 		}
 		return m, nil
@@ -226,23 +260,22 @@ func (m *applicationModel) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		return m, m.updateChild(msg.message)
 	case applicationConnectionMsg:
 		return m, m.connectionMessage(msg)
+	case applicationReconnectMsg:
+		return m, m.reconnectMessage(msg)
 	case applicationDashboardMsg:
 		if m.screen == "dashboard" && m.connection != nil && m.connection.generation == msg.generation {
 			return m, m.dashboardUpdate(msg.message)
 		}
 		return m, nil
 	case tea.KeyMsg:
+		if m.destruction != nil && m.destruction.exit {
+			return m, nil // wait for the confirmed remote result; do not turn an error into a silent exit
+		}
 		if msg.Type == tea.KeyCtrlC {
 			return m, m.askExit()
 		}
 		if m.exitConfirm {
-			switch msg.String() {
-			case "y":
-				return m, m.stopAndQuit()
-			case "n", "esc":
-				m.exitConfirm = false
-			}
-			return m, nil
+			return m, m.exitKey(msg)
 		}
 		if (m.width < 30 || m.height < 10) && m.screen != "dashboard" {
 			return m, nil
@@ -267,6 +300,8 @@ func (m *applicationModel) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			return m, m.askExit()
 		}
 		switch m.screen {
+		case "restart-confirm":
+			return m, m.restartKey(msg)
 		case "resume":
 			switch msg.String() {
 			case "enter":
@@ -276,10 +311,6 @@ func (m *applicationModel) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			}
 		case "home":
 			switch msg.String() {
-			case "i":
-				m.entry = "resume"
-				m.offerResume()
-				return m, nil
 			case "enter":
 				if m.configured {
 					return m, m.beginConnection()
@@ -352,11 +383,14 @@ func (m *applicationModel) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			return m, m.dashboardUpdate(msg)
 		case "connecting":
 			if msg.Type == tea.KeyEsc {
+				if m.instanceID > 0 {
+					return m, m.askExit()
+				}
 				return m, m.disconnect()
 			}
 		case "destroy-confirm":
 			switch msg.String() {
-			case "left", "right", " ":
+			case "left", "right", "up", "down", "tab", " ":
 				m.selected = !m.selected
 			case "esc", "n":
 				m.screen = "error"
@@ -479,6 +513,9 @@ func (m *applicationModel) loadConfiguration() {
 	if err == nil && m.destroyedID > 0 && cfg.Provider.Kind == "vast" && cfg.Provider.InstanceID == m.destroyedID {
 		m.configured = false
 	}
+	if err == nil && m.configured && cfg.Provider.Kind == "vast" && m.instanceID == 0 {
+		m.instanceID = cfg.Provider.InstanceID
+	}
 	if err != nil && m.exists {
 		m.errText = m.sanitize(err.Error())
 	} else {
@@ -509,13 +546,32 @@ func (m *applicationModel) sanitize(value string) string {
 	return value
 }
 func (m *applicationModel) applyProgress(p setup.Progress) {
+	if m.loader.stageID != p.Stage {
+		m.loader.serverPhase = ""
+	}
+	m.loader.stageID = p.Stage
 	if p.Stage == "" {
 		return
+	}
+	if p.Stage == setup.ProgressCreating && m.progressStage != setup.ProgressCreating {
+		m.loader.forgeStarted = time.Time{}
+		m.loader.transferCurrent = 0
+		m.loader.transferTotal = 0
+		m.loader.transferActive = false
+		m.loader.transferRatioHigh = 0
+		m.loader.transferCompleted = false
+		m.loader.transferCompletedAt = time.Time{}
 	}
 	if p.Stage != setup.ProgressWaiting {
 		m.loader.activity = nil
 		m.loader.checkedAt = time.Time{}
 		m.loader.providerStatus = ""
+		m.loader.activityChanged = time.Time{}
+		m.loader.detailSnapshot = ""
+		m.loader.providerMessage = ""
+	}
+	if p.Stage != setup.ProgressLaunching {
+		m.loader.transferActive = false
 	}
 	if m.progressStage != "" && p.Stage != m.progressStage {
 		completed := ""
@@ -525,7 +581,7 @@ func (m *applicationModel) applyProgress(p setup.Progress) {
 		case m.progressStage == setup.ProgressWaiting && p.Stage == setup.ProgressHostKeys:
 			completed = "Instance running"
 		case m.progressStage == setup.ProgressHostKeys && p.Stage == setup.ProgressLaunching:
-			completed = "Host fingerprints verified"
+			completed = "SSH host secured"
 		case m.progressStage == setup.ProgressLaunching && p.Stage == setup.ProgressSaving:
 			completed = "Server launched"
 		}
@@ -536,7 +592,7 @@ func (m *applicationModel) applyProgress(p setup.Progress) {
 	m.progressStage = p.Stage
 	m.loader.future = nil
 	stages := []string{setup.ProgressCreating, setup.ProgressWaiting, setup.ProgressHostKeys, setup.ProgressLaunching, setup.ProgressSaving}
-	labels := []string{"Create instance", "Wait for instance", "Verify host fingerprints", "Launch inference server", "Save configuration"}
+	labels := []string{"Create instance", "Wait for instance", "Secure SSH host", "Launch inference server", "Save configuration"}
 	stage := p.Stage
 	if stage == setup.ProgressCreated {
 		stage = setup.ProgressCreating
@@ -578,6 +634,9 @@ func (m *applicationModel) mergeProgress() {
 	m.applyServerLogs(m.session.logs)
 }
 func (m *applicationModel) cleanup() {
+	if m.balanceCancel != nil {
+		m.balanceCancel()
+	}
 	if m.destruction != nil {
 		m.destruction.cancel()
 		<-m.destruction.done

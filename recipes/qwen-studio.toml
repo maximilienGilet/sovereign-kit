@@ -1,6 +1,16 @@
 version = 1
 id = "qwen-studio"
 name = "Qwen Studio"
+kind = "text-generation"
+[profile]
+status = "reference"
+summary = "Long-context private Qwen route on RTX PRO 6000 Blackwell Server Edition"
+evidence = "Historical synthetic evidence; rerun against the digest-locked recipe before production positioning"
+use_when = [
+  "Several private agent sessions must share one route",
+  "The configured long-context ceiling is required",
+  "The exact RTX PRO 6000 S accelerator is available",
+]
 
 [runtime]
 engine = "sglang"
@@ -10,6 +20,7 @@ image = "lmsysorg/sglang@sha256:e21dd539b36ea7842101393ec3fe3b0d453626cd8251e4d4
 repository = "RadixArk/Qwen3.8-27B-NVFP4"
 revision = "319f741cce68d7914884900c138a1fbb70a42f30"
 trust_remote_code = true
+native_context_window = 262144
 
 [serve]
 context_window = 262144
@@ -18,4 +29,7 @@ max_running_requests = 5
 
 [requirements]
 minimum_vram_gb = 96
+gpu_model = "RTX PRO 6000 S"
+gpu_count = 1
+strict_gpu = true
 minimum_disk_gb = 120

@@ -1,0 +1,52 @@
+<style>
+  .terminal-wrap { margin-top:22px; padding:18px; border:1px solid #26384a; border-radius:16px; background:#02050a; box-shadow:0 30px 80px rgba(0,0,0,.42); overflow:auto; }
+  .terminal-label { display:flex; justify-content:space-between; margin-bottom:12px; color:#607387; font:700 11px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.08em; }
+  .terminal { display:inline-block; min-width:100%; margin:0; color:#a8bdcb; background:#050b11; font:12px/1.42 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre; tabishly:2; }
+  .c { color:#22d3ee; font-weight:800; } .w { color:#edf8ff; font-weight:800; } .m { color:#587083; } .a { color:#fbbf24; font-weight:800; } .g { color:#34d399; font-weight:800; } .v { color:#a78bfa; font-weight:800; }
+  .principle { margin-top:16px; padding:15px 17px; border:1px solid #26374a; border-radius:10px; background:#08111b; color:#8ca0af; line-height:1.55; }
+  .principle strong { color:#e7f5fc; }
+  .largebars { color:#22d3ee; letter-spacing:-.04em; }
+  .choice { margin-top:14px; padding:17px 18px; border:1px solid #0e7490; border-radius:11px; background:#071b26; color:#a5f3fc; cursor:pointer; }
+  .choice.selected { border-color:#67e8f9; box-shadow:0 0 0 2px rgba(34,211,238,.16); }
+  .choice strong { display:block; color:#f0fdff; margin-bottom:4px; }
+  @media(max-width:850px){.terminal{font-size:10px}}
+</style>
+
+<h2>Une recipe à la fois — aucun classement</h2>
+<p class="subtitle">La liste sert uniquement à changer de fiche. Chaque visualisation décrit la recipe active avec ses propres références vérifiables.</p>
+
+<div class="terminal-wrap">
+  <div class="terminal-label iris"><span>APERÇU TUI · 120 × 30</span><span>QWEN SOLO ACTIVE</span></div>
+  <pre class="terminal"><span class="c">SOVEREIGN KIT</span><span class="m">  //  SETUP  /  CHOOSE A RECIPE                                      STEP 2 OF 5</span>
+<span class="m">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+<span class="m">┌─ RECIPES ─────────────────────┐</span>  <span class="m">┌─ QWEN SOLO ─────────────────────────────────────────────────────────────────────────┐</span>
+<span class="m">│</span> <span class="c">▸ 01  QWEN SOLO</span>             <span class="m">│</span>  <span class="m">│</span> <span class="a">EXPERIMENTAL</span>   <span class="w">PRIVATE QWEN ROUTE FOR ONE DEVELOPER</span>                               <span class="m">│</span>
+<span class="m">│</span>      <span class="w">RTX 5090 · individual</span>    <span class="m">│</span>  <span class="m">│</span>                                                                                        <span class="m">│</span>
+<span class="m">│</span>      <span class="a">EXPERIMENTAL</span>             <span class="m">│</span>  <span class="m">│</span> <span class="m">┌─ CONFIGURED CONTEXT / MODEL NATIVE ─────────────────┐</span>  <span class="m">┌─ FIT ──────────────────────┐</span> <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span>                                                      <span class="m">│</span>  <span class="m">│</span> <span class="g">CHOOSE THIS RECIPE IF…</span>       <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>   02  QWEN STUDIO           <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span> <span class="w">32,768 tokens</span>                         <span class="c">12.5%</span>  <span class="m">│</span>  <span class="m">│</span> ◆ One private session       <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>      long context · shared   <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span> <span class="c">██████</span><span class="m">──────────────────────────────────────────</span> <span class="m">│</span>  <span class="m">│</span> ◆ 32K context is sufficient <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>      <span class="g">REFERENCE</span>                <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span> <span class="m">0          65K         131K         196K       262K</span> <span class="m">│</span>  <span class="m">│</span> ◆ Exact RTX 5090 available  <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span> <span class="m">Native source: pinned model config · max_position 262144</span> <span class="m">│</span>  <span class="m">│</span>                              <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>   03  HUGGING FACE          <span class="m">│</span>  <span class="m">│</span> <span class="m">└──────────────────────────────────────────────────────┘</span>  <span class="m">│</span> <span class="a">CONTRACT</span>                     <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>      custom model + hardware <span class="m">│</span>  <span class="m">│</span>                                                           <span class="m">│</span> 32K context maximum          <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>      <span class="m">UNMEASURED</span>               <span class="m">│</span>  <span class="m">│</span> <span class="m">┌─ SERVER LIMITS ─────────────────────────────────────┐</span>  <span class="m">│</span> 4K output maximum            <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span> <span class="w">OUTPUT</span>          <span class="w">CONCURRENCY</span>       <span class="w">ACCELERATOR</span>     <span class="m">│</span>  <span class="m">│</span> One active request           <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span> <span class="c">4,096 tok</span>        <span class="c">◆ 1 request</span>       <span class="c">1× RTX 5090</span>     <span class="m">│</span>  <span class="m">│</span> Experimental evidence        <span class="m">│</span> <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span> absolute limit   recipe ceiling    strict · 32 GB VRAM <span class="m">│</span>  <span class="m">└──────────────────────────────┘</span> <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="m">└──────────────────────────────────────────────────────┘</span>                                  <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span>                                                                                        <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="m">┌─ EXACT-PROFILE THROUGHPUT ─────────────────────────────────────────────────────────┐</span> <span class="m">│</span>
+<span class="m">│</span>                               <span class="m">│</span>  <span class="m">│</span> <span class="m">│</span> INPUT / PREFILL  <span class="a">NOT MEASURED</span>      OUTPUT / DECODE  <span class="a">NOT MEASURED</span>               <span class="m">│</span> <span class="m">│</span>
+<span class="m">└───────────────────────────────┘</span>  <span class="m">│</span> <span class="m">│</span> No estimate shown until the pinned image + exact GPU benchmark passes.              <span class="m">│</span> <span class="m">│</span>
+                                   <span class="m">│</span> <span class="m">└────────────────────────────────────────────────────────────────────────────────────┘</span> <span class="m">│</span>
+                                   <span class="m">└────────────────────────────────────────────────────────────────────────────────────────┘</span>
+
+ <span class="m">MODEL</span> RadixArk/Qwen3.8-27B-NVFP4   <span class="m">ENGINE</span> SGLang   <span class="m">DISK</span> 100 GB min   <span class="m">PRICE</span> shown after Vast scan
+ <span class="m">↑/↓ recipe</span>   <span class="m">i evidence</span>   <span class="m">tab details</span>                            <span class="c">[ USE QWEN SOLO ↵ ]</span>   <span class="m">esc cancel</span></pre>
+</div>
+
+<div class="principle"><strong>Règle de design :</strong> aucune longueur de barre ne dépend d’une autre recipe. La seule barre possède un dénominateur externe vérifié — le contexte natif du modèle. Les limites sans plafond naturel restent des valeurs absolues. Le débit reste visuellement vide tant que le profil exact n’a pas été mesuré.</div>
+
+<div class="choice option" data-choice="approve-single-recipe-tui" onclick="toggleSelect(this)"><strong>Valider cette direction sans comparaison</strong>Navigation à gauche, dashboard autonome de la recipe active, décision guidée et preuves explicites.</div>

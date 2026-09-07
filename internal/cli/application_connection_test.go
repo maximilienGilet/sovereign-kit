@@ -68,10 +68,40 @@ func TestApplicationEndpointCopyAndEscapeKeepTunnelOpen(t *testing.T) {
 		t.Fatal("disconnect failed")
 	}
 }
+
+func TestConnectionRestartsClockAfterProvisioningGeneration(t *testing.T) {
+	m, _, _ := connectionApplication(t, dashboardui.Dependencies{})
+	m.cleanupConnection()
+	m.loader.active = true
+	m.loader.epoch = 8
+	m.loader.completed = []string{"Instance running", "Server launched"}
+	m.screen = "working"
+	m.beginConnection()
+	if tick := m.reconcileLoader(); tick == nil {
+		t.Fatal("new connection generation did not schedule a fresh animation clock")
+	}
+	if m.loader.epoch <= 8 || m.loader.stageID != "verifying-connection" {
+		t.Fatal("connection retained stale provisioning animation")
+	}
+}
+
+func TestManualSaveWithPreviousVastIdentityDoesNotAutoConnect(t *testing.T) {
+	m := newApplication(context.Background(), startTestConfig(t), "root", "home", ApplicationDependencies{})
+	defer m.cleanup()
+	m.instanceID = 987 // a previous Vast instance remains relevant for billing
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	close(done)
+	m.session = &applicationSession{ctx: ctx, cancel: cancel, generation: 1, done: done}
+	m.Update(applicationEvent{generation: 1, value: applicationDone{}})
+	if m.screen != "saved" || m.connection != nil {
+		t.Fatal("retained Vast identity caused automatic manual-route connection")
+	}
+}
 func TestApplicationDisconnectCancelsAndJoinsProfileWorkerIgnoringLateResult(t *testing.T) {
 	started, finished := make(chan struct{}), make(chan struct{})
 	m, tunnel, connect := connectionApplication(t, dashboardui.Dependencies{Resolve: func(k clientprofile.Integration) (clientprofile.Target, error) {
-		return clientprofile.Target{k, "/tmp/fixture"}, nil
+		return clientprofile.Target{Kind: k, Path: "/tmp/fixture"}, nil
 	}, Inspect: func(ctx context.Context, _ clientprofile.Target, _ clientprofile.Endpoint) clientprofile.Inspection {
 		close(started)
 		<-ctx.Done()

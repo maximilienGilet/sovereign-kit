@@ -17,11 +17,19 @@ type Recipe struct {
 	ID           string       `toml:"id"`
 	Name         string       `toml:"name"`
 	Kind         string       `toml:"kind"`
+	Profile      Profile      `toml:"profile"`
 	Runtime      Runtime      `toml:"runtime"`
 	Model        Model        `toml:"model"`
 	Speculative  *Speculative `toml:"speculative"`
 	Serve        Serve        `toml:"serve"`
 	Requirements Requirements `toml:"requirements"`
+}
+
+type Profile struct {
+	Status   string   `toml:"status"`
+	Summary  string   `toml:"summary"`
+	Evidence string   `toml:"evidence"`
+	UseWhen  []string `toml:"use_when"`
 }
 
 type Speculative struct {
@@ -32,15 +40,25 @@ type Speculative struct {
 }
 
 type Runtime struct {
-	Engine string `toml:"engine"`
-	Image  string `toml:"image"`
+	Precompiled            bool    `toml:"precompiled" json:",omitempty"`
+	SourceRevision         string  `toml:"source_revision" json:",omitempty"`
+	Engine                 string  `toml:"engine"`
+	Image                  string  `toml:"image"`
+	Quantization           string  `toml:"quantization"`
+	KVCacheDType           string  `toml:"kv_cache_dtype"`
+	KVCacheTypeK           string  `toml:"kv_cache_type_k" json:",omitempty"`
+	KVCacheTypeV           string  `toml:"kv_cache_type_v" json:",omitempty"`
+	GPUMemoryUtilization   float64 `toml:"gpu_memory_utilization"`
+	DisableAsyncScheduling bool    `toml:"disable_async_scheduling"`
 }
 
 type Model struct {
-	Repository      string `toml:"repository"`
-	Revision        string `toml:"revision"`
-	Filename        string `toml:"filename"`
-	TrustRemoteCode bool   `toml:"trust_remote_code"`
+	SHA256              string `toml:"sha256" json:",omitempty"`
+	Repository          string `toml:"repository"`
+	Revision            string `toml:"revision"`
+	Filename            string `toml:"filename"`
+	TrustRemoteCode     bool   `toml:"trust_remote_code"`
+	NativeContextWindow int    `toml:"native_context_window"`
 }
 
 type Serve struct {
@@ -50,8 +68,11 @@ type Serve struct {
 }
 
 type Requirements struct {
-	MinimumVRAMGB int `toml:"minimum_vram_gb"`
-	MinimumDiskGB int `toml:"minimum_disk_gb"`
+	GPUModel      string `toml:"gpu_model"`
+	GPUCount      int    `toml:"gpu_count"`
+	StrictGPU     bool   `toml:"strict_gpu"`
+	MinimumVRAMGB int    `toml:"minimum_vram_gb"`
+	MinimumDiskGB int    `toml:"minimum_disk_gb"`
 }
 
 func Load(path string) (Recipe, error) {
@@ -88,9 +109,35 @@ func CustomHuggingFace(repository, revision string, trustRemoteCode bool) (Recip
 	return recipe, recipe.Validate()
 }
 
+// LlamaCacheTypes resolves the llama.cpp cache formats while preserving the
+// q8_0 behavior of recipes and checkpoints created before these fields existed.
+func (recipe Recipe) LlamaCacheTypes() (string, string) {
+	k, v := recipe.Runtime.KVCacheTypeK, recipe.Runtime.KVCacheTypeV
+	if k == "" {
+		k = "q8_0"
+	}
+	if v == "" {
+		v = "q8_0"
+	}
+	return k, v
+}
+
 func (recipe Recipe) Validate() error {
 	if recipe.Version != 1 || strings.TrimSpace(recipe.ID) == "" || strings.TrimSpace(recipe.Name) == "" {
 		return fmt.Errorf("recipe version, id, and name are required")
+	}
+	if recipe.Profile.Status != "" && recipe.Profile.Status != "reference" && recipe.Profile.Status != "experimental" && recipe.Profile.Status != "lab" {
+		return fmt.Errorf("recipe profile status must be reference, experimental, or lab")
+	}
+	if recipe.Requirements.StrictGPU && recipe.Profile.Status == "" {
+		return fmt.Errorf("strict GPU requirements need a profile status")
+	}
+	if recipe.Requirements.StrictGPU &&
+		(strings.TrimSpace(recipe.Requirements.GPUModel) == "" || recipe.Requirements.GPUCount < 1) {
+		return fmt.Errorf("strict GPU requirements need a model and positive GPU count")
+	}
+	if recipe.Requirements.GPUCount < 0 {
+		return fmt.Errorf("GPU count cannot be negative")
 	}
 	if !strings.Contains(recipe.Runtime.Image, "@sha256:") {
 		return fmt.Errorf("recipe runtime image must be pinned by digest")
@@ -107,23 +154,66 @@ func (recipe Recipe) Validate() error {
 			return fmt.Errorf("text-generation recipes require SGLang")
 		}
 	case "speculative-text-generation":
-		if recipe.Runtime.Engine != "sglang" {
-			return fmt.Errorf("speculative recipes require SGLang")
-		}
-		if recipe.Speculative == nil || recipe.Speculative.Algorithm != "dflash" ||
-			!strings.Contains(recipe.Speculative.DraftRepository, "/") ||
-			!gitRevision.MatchString(recipe.Speculative.DraftRevision) || recipe.Speculative.NumDraftTokens < 1 {
-			return fmt.Errorf("DFlash recipes require a pinned draft model and positive draft token count")
+		switch recipe.Runtime.Engine {
+		case "sglang":
+			if recipe.Speculative == nil || recipe.Speculative.Algorithm != "dflash" ||
+				!strings.Contains(recipe.Speculative.DraftRepository, "/") ||
+				!gitRevision.MatchString(recipe.Speculative.DraftRevision) || recipe.Speculative.NumDraftTokens < 1 {
+				return fmt.Errorf("DFlash recipes require a pinned draft model and positive draft token count")
+			}
+		case "vllm":
+			if recipe.Runtime.Quantization != "modelopt" ||
+				recipe.Runtime.KVCacheDType != "turboquant_4bit_nc" ||
+				recipe.Runtime.GPUMemoryUtilization <= 0 || recipe.Runtime.GPUMemoryUtilization >= 1 ||
+				!recipe.Runtime.DisableAsyncScheduling ||
+				recipe.Speculative == nil || recipe.Speculative.Algorithm != "qwen3_5_mtp" ||
+				recipe.Speculative.NumDraftTokens != 4 ||
+				strings.TrimSpace(recipe.Speculative.DraftRepository) != "" ||
+				strings.TrimSpace(recipe.Speculative.DraftRevision) != "" {
+				return fmt.Errorf("vLLM TurboQuant MTP recipes require the reviewed single-GPU contract")
+			}
+		default:
+			return fmt.Errorf("speculative recipes require SGLang or vLLM")
 		}
 	case "gguf-text-generation":
 		if recipe.Runtime.Engine != "llama-cpp" || !strings.HasSuffix(recipe.Model.Filename, ".gguf") {
 			return fmt.Errorf("GGUF recipes require llama.cpp and a selected .gguf filename")
+		}
+		cacheK, cacheV := recipe.LlamaCacheTypes()
+		for _, cacheType := range []string{cacheK, cacheV} {
+			if cacheType != "q8_0" && cacheType != "q4_0" {
+				return fmt.Errorf("llama.cpp KV cache types must be q8_0 or q4_0")
+			}
+		}
+		if recipe.Speculative != nil {
+			if recipe.Speculative.Algorithm != "draft-mtp" || recipe.Speculative.NumDraftTokens != 2 || recipe.Speculative.DraftRepository != "" || recipe.Speculative.DraftRevision != "" ||
+				!gitRevision.MatchString(recipe.Runtime.SourceRevision) || !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(recipe.Model.SHA256) ||
+				!regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*$`).MatchString(recipe.Model.Repository) ||
+				!regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.gguf$`).MatchString(recipe.Model.Filename) {
+				return fmt.Errorf("native llama.cpp MTP requires pinned source, model SHA256, safe filename and repository, depth two")
+			}
+		}
+		// ContextWindow is the advertised per-request limit, not the shared KV pool.
+		if recipe.Serve.MaxRunningRequests < 1 || recipe.Serve.MaxRunningRequests > 4 ||
+			recipe.Serve.ContextWindow > 262144 ||
+			recipe.Serve.ContextWindow > 524288/recipe.Serve.MaxRunningRequests ||
+			recipe.Serve.MaxOutputTokens > recipe.Serve.ContextWindow {
+			return fmt.Errorf("llama.cpp requires 1–4 slots, at most 262144 context tokens per slot and 524288 total, and output within per-slot context")
 		}
 	default:
 		return fmt.Errorf("unsupported recipe kind %q", recipe.Kind)
 	}
 	if recipe.Serve.ContextWindow < 1 || recipe.Serve.MaxOutputTokens < 1 || recipe.Serve.MaxRunningRequests < 1 {
 		return fmt.Errorf("positive server limits are required")
+	}
+	if recipe.Model.NativeContextWindow < 0 ||
+		(recipe.Model.NativeContextWindow > 0 && recipe.Model.NativeContextWindow < recipe.Serve.ContextWindow) {
+		return fmt.Errorf("native context must contain the configured context window")
+	}
+	for _, item := range recipe.Profile.UseWhen {
+		if strings.TrimSpace(item) == "" {
+			return fmt.Errorf("recipe use_when entries cannot be blank")
+		}
 	}
 	if recipe.Requirements.MinimumVRAMGB < 0 || recipe.Requirements.MinimumDiskGB < 0 {
 		return fmt.Errorf("minimum VRAM and disk cannot be negative")

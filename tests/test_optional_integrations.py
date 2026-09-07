@@ -78,14 +78,25 @@ class OptionalIntegrationTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("FAIL  Pi provider lock", result.stdout)
 
-    def test_pi_wrapper_and_doctor_use_sovereign_override_first(self):
-        selected = self.pi_profile(self.home / "chosen profile")
-        self.env.update(PI_SOVEREIGN_DIR=str(selected), PI_CODING_AGENT_DIR=str(self.home / "other profile"))
+    def test_pi_wrapper_preserves_normal_environment_and_selects_provider(self):
+        selected = self.pi_profile(self.home / "normal profile")
+        self.env.update(PI_SOVEREIGN_DIR=str(self.home / "legacy profile"), PI_CODING_AGENT_DIR=str(selected))
+        self.command("pi", '#!/bin/sh\nprintf "%s\\n" "$PI_CODING_AGENT_DIR" "$@"\n')
         result = subprocess.run([str(self.bin / "pi-sovereign")], env=self.env, text=True, capture_output=True)
-        self.assertEqual(str(selected), result.stdout)
-        result = self.doctor()
-        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertIn(f"Profile: {selected}\n", result.stdout)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([str(selected), "--provider", "sovereign-qwen", "--model", "actual/model"], result.stdout.splitlines())
+
+    def test_pi_wrapper_refuses_ambiguous_models_without_explicit_selection(self):
+        selected = self.pi_profile(self.home / ".pi/agent")
+        (selected / "models.json").write_text(json.dumps({"providers": {"sovereign-qwen": {"models": [{"id": "one"}, {"id": "two"}]}}}))
+        result = subprocess.run([str(self.bin / "pi-sovereign")], env=self.env, text=True, capture_output=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("SOVKIT_MODEL", result.stderr)
+        self.env["SOVKIT_MODEL"] = "two"
+        self.command("pi", '#!/bin/sh\nprintf "%s\\n" "$@"\n')
+        result = subprocess.run([str(self.bin / "pi-sovereign")], env=self.env, text=True, capture_output=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["--provider", "sovereign-qwen", "--model", "two"], result.stdout.splitlines())
 
     def test_missing_opencode_profile_points_to_connected_setup(self):
         result = subprocess.run([str(self.bin / "opencode-sovereign")], env=self.env, text=True, capture_output=True)

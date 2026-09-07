@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
+	"github.com/maximilienGilet/sovereign-kit/internal/sshkey"
 )
 
 // Healthcheck confirms that the local, unauthenticated V1 inference route responds.
@@ -68,7 +69,7 @@ func CommandContext(ctx context.Context, cfg config.Config) (*exec.Cmd, error) {
 		"-o", "ExitOnForwardFailure=yes",
 		"-o", "IdentitiesOnly=yes",
 		"-o", "StrictHostKeyChecking=yes",
-		"-o", "UserKnownHostsFile="+cfg.SSH.KnownHostsFile,
+		"-o", sshkey.KnownHostsOption(cfg.SSH.KnownHostsFile),
 		"-i", cfg.SSH.IdentityFile,
 		"-L", "127.0.0.1:30000:127.0.0.1:30000",
 		"-p", strconv.Itoa(cfg.SSH.Port),

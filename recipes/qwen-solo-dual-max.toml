@@ -1,0 +1,46 @@
+version = 1
+id = "qwen-solo-dual-max"
+name = "Qwen Solo — Dual Max Lab"
+kind = "gguf-text-generation"
+
+[profile]
+status = "lab"
+summary = "2 × 262K · KV q4 · LAB / unvalidated memory fit"
+evidence = "Maximum-concurrency laboratory configuration; 32 GB GPU fit and long-context quality with a q4 KV cache are not validated"
+use_when = [
+  "Two simultaneous full-context requests justify an experimental memory trade-off",
+  "Lower KV-cache precision is acceptable for testing",
+  "An RTX 5090 with a CUDA 13.3-compatible driver is available",
+]
+
+[runtime]
+engine = "llama-cpp"
+image = "ghcr.io/maximiliengilet/sovereign-kit-llama@sha256:a9ceb65277f2f4dfd4cc3b5896f4398703e323249dd9bf87eb20b17b9f467239"
+precompiled = true
+source_revision = "86b351fd64d5ebbf1ba795ffd60c8f4a8c958613"
+kv_cache_type_k = "q4_0"
+kv_cache_type_v = "q4_0"
+
+[model]
+repository = "unsloth/Qwen3.8-27B-GGUF"
+revision = "4ca720788d1e01f1bff70c033e0d0028fd02e502"
+filename = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+sha256 = "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e"
+trust_remote_code = false
+native_context_window = 262144
+
+[speculative]
+algorithm = "draft-mtp"
+num_draft_tokens = 2
+
+[serve]
+context_window = 262144
+max_output_tokens = 16384
+max_running_requests = 2
+
+[requirements]
+gpu_model = "RTX 5090"
+gpu_count = 1
+strict_gpu = true
+minimum_vram_gb = 32
+minimum_disk_gb = 100

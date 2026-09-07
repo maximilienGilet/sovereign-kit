@@ -44,13 +44,14 @@ type Tunnel interface {
 }
 
 type StartDependencies struct {
-	NewTunnel    func(context.Context, config.Config, io.Writer) (Tunnel, error)
-	Healthcheck  func(context.Context, string) error
-	RunDashboard func(io.Writer) error
-	Discover     func(context.Context, string, clientprofile.Metadata) clientprofile.Endpoint
-	Clock        setup.Clock
-	PollInterval time.Duration
-	PollTimeout  time.Duration
+	PrepareConnection connectionPreparer
+	NewTunnel         func(context.Context, config.Config, io.Writer) (Tunnel, error)
+	Healthcheck       func(context.Context, string) error
+	RunDashboard      func(io.Writer) error
+	Discover          func(context.Context, string, clientprofile.Metadata) clientprofile.Endpoint
+	Clock             setup.Clock
+	PollInterval      time.Duration
+	PollTimeout       time.Duration
 }
 
 func Start(ctx context.Context, output io.Writer, configPath string, deps StartDependencies) error {

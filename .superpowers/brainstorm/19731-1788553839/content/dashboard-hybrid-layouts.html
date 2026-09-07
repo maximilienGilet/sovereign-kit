@@ -1,0 +1,86 @@
+<style>
+  .hybrids{display:grid;grid-template-columns:repeat(3,minmax(300px,1fr));gap:18px;align-items:start}.hybrid{cursor:pointer;border:1px solid #29444b;border-radius:10px;overflow:hidden;background:#030606;transition:.18s}.hybrid:hover,.hybrid.selected{border-color:#60dbc0;box-shadow:0 0 0 1px #60dbc0,0 0 26px rgba(96,219,192,.12);transform:translateY(-2px)}
+  .term{padding:15px;min-height:440px;white-space:pre;overflow:hidden;background:#020404;color:#dbe2e2;font:12.5px/1.38 ui-monospace,SFMono-Regular,Menlo,monospace}.c{color:#60dbc0}.b{color:#56b6d8}.d{color:#61757c}.w{color:#f0f6f5}.a{color:#e9ab4e}.copy{padding:14px 16px 17px;border-top:1px solid #17272c}.copy h3{margin:0 0 6px}.copy p{margin:0;color:#91a3a8}.rec{color:#60dbc0;font-size:11px;letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px}@media(max-width:1100px){.hybrids{grid-template-columns:1fr}.term{min-height:auto}}
+</style>
+<h2>Un dashboard, deux niveaux de lecture</h2>
+<p class="subtitle">Chaque variante répond à « est-ce que ça tourne bien ? » en une seconde, puis permet de comprendre les performances sans changer d’outil.</p>
+<div class="hybrids">
+  <div class="hybrid" data-choice="focus-inspector" onclick="toggleSelect(this)">
+    <div class="term"><span class="c">PRIVATE ENDPOINT</span>   <span class="c">● HEALTHY</span>   <span class="w">2 active</span>   <span class="d">0 queued</span>
+
+╭─ <span class="c">GENERATION VELOCITY</span> ───╮ ╭─ <span class="c">NOW</span> ──────────╮
+│ <span class="w">48.7 tok/s</span>     <span class="d">avg 43.1</span> │ │ prompt <span class="w">812 t/s</span> │
+│                              │ │ KV       <span class="w">68%</span> │
+│ <span class="c">⠀⠀⠀⠀⠀⠀⠀⠀⣠⠶⠛⠉⠙⢦⠀⠀⠀⠀</span> │ │ <span class="c">███████</span><span class="d">░░░</span>    │
+│ <span class="c">⠀⢀⣀⠀⢀⡤⠞⠁⠀⠀⠀⠀⠀⠈⢧⣀⣀</span> │ │ context  <span class="w">131K</span> │
+│ <span class="b">⠚⠉⠈⠙⠲⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙</span> │ │ output    <span class="w">16K</span> │
+│ <span class="d">−60s        −30s         now</span> │ │ peak  <span class="w">61.2 t/s</span> │
+╰──────────────────────────────╯ ╰────────────────╯
+
+╭─ <span class="c">SESSION</span> ───────────────────────────────╮
+│ Vast #49882495 · RTX 5090 · France            │
+│ 01:47:23 connected · <span class="a">$0.64 est.</span> · $0.36/hour │
+╰────────────────────────────────────────────────╯
+╭─ <span class="c">ENDPOINT</span> ──────────────────────────────╮
+│ <span class="w">http://127.0.0.1:30000/v1</span>    [enter copy] │
+│ unsloth/Qwen3.8-27B-GGUF        [i integrate] │
+╰────────────────────────────────────────────────╯
+<span class="d">Live · checked 2s ago                     [q] quit</span></div>
+    <div class="copy"><div class="rec">Recommandé</div><h3>A · Focus + Inspector</h3><p>État global en bandeau, grand graphe, valeurs explicatives à droite. Tout est visible, chaque chiffre n’apparaît qu’une fois.</p></div>
+  </div>
+
+  <div class="hybrid" data-choice="overview-detail" onclick="toggleSelect(this)">
+    <div class="term"><span class="c">PRIVATE ENDPOINT</span>              <span class="c">● HEALTHY</span>
+
+╭─ <span class="c">MODEL PULSE</span> ─────────────────────────╮
+│ <span class="c">▁▂▃▅▆▅▄▆▇█▆▅▃▄▆▇▆▅▇</span>  <span class="w">48.7 tok/s</span> │
+│ <span class="w">2 active</span> · 0 queued · KV 68% · prompt 812 t/s │
+╰───────────────────────────────────────────────╯
+╭─ <span class="c">CONNECTION</span> ──────╮ ╭─ <span class="c">INSTANCE</span> ──────╮
+│ <span class="w">Endpoint verified</span> │ │ Vast #49882495   │
+│ SSH tunnel open  │ │ RTX 5090 · France │
+│ [enter] copy     │ │ $0.36/hour       │
+╰──────────────────╯ ╰───────────────────╯
+╭─ <span class="c">PERFORMANCE DETAIL</span> ───────────────────╮
+│ Press <span class="w">d</span> to open 5-minute analysis             │
+│ avg · peak · prompt · generation · KV correlation │
+╰───────────────────────────────────────────────╯
+
+
+
+
+
+
+<span class="d">[d] performance  [i] integrations  [q] quit</span></div>
+    <div class="copy"><h3>B · Overview + Detail</h3><p>Le dashboard reste très calme ; une touche ouvre l’analyse plein écran. Plus clair, mais les performances précises demandent une action.</p></div>
+  </div>
+
+  <div class="hybrid" data-choice="vertical-narrative" onclick="toggleSelect(this)">
+    <div class="term"><span class="c">PRIVATE ENDPOINT</span>              <span class="c">● HEALTHY</span>
+
+<span class="w">48.7 tok/s</span>  <span class="d">generation now</span>     <span class="w">2</span> <span class="d">active</span>
+<span class="c">▁▂▃▅▆▅▄▆▇█▆▅▃▄▆▇▆▅▇▆▅▄▆▇</span>
+<span class="d">−60s                                  now</span>
+
+<span class="c">PERFORMANCE</span>
+avg 60s     <span class="w">43.1 tok/s</span>    peak     <span class="w">61.2</span>
+prompt      <span class="w">812 tok/s</span>     queued    <span class="w">0</span>
+KV cache    <span class="c">███████</span><span class="d">░░░</span> <span class="w">68%</span>
+
+<span class="c">MODEL</span>
+Qwen3.8-27B-GGUF
+context     <span class="w">131,072</span>       output   <span class="w">16,384</span>
+
+<span class="c">SESSION</span>
+Vast #49882495 · RTX 5090 · France
+connected 01:47:23 · <span class="a">$0.64 estimated</span>
+
+<span class="c">ENDPOINT</span>
+<span class="w">http://127.0.0.1:30000/v1</span>
+Tunnel open · checked 2s ago
+
+
+<span class="d">[enter] copy  [i] integrations  [q] quit</span></div>
+    <div class="copy"><h3>C · Vertical Narrative</h3><p>Une lecture naturelle de haut en bas et une excellente adaptation aux petits terminaux. Moins “cockpit”, plus éditorial.</p></div>
+  </div>
+</div>

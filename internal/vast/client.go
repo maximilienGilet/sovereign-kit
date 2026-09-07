@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/maximilienGilet/sovereign-kit/internal/sshkey"
 	"net/http"
 	"strings"
 )
@@ -17,10 +18,19 @@ type Client struct {
 }
 
 type Instance struct {
-	ID      int    `json:"id"`
-	Status  string `json:"actual_status"`
-	SSHHost string `json:"ssh_host"`
-	SSHPort int    `json:"ssh_port"`
+	DaemonLogs     string `json:"-"`
+	Image          string `json:"image_uuid"`
+	StatusMessage  string `json:"status_msg"`
+	ID             int    `json:"id"`
+	Status         string `json:"actual_status"`
+	IntendedStatus string `json:"intended_status"`
+	NextState      string `json:"next_state"`
+	SSHHost        string `json:"ssh_host"`
+	SSHPort        int    `json:"ssh_port"`
+}
+
+func (instance Instance) StartRequested() bool {
+	return strings.EqualFold(instance.IntendedStatus, "running") || strings.EqualFold(instance.NextState, "running")
 }
 
 type instanceResponse struct {
@@ -48,7 +58,7 @@ func (client *Client) GetInstance(ctx context.Context, instanceID int) (Instance
 		return Instance{}, fmt.Errorf("Vast show instance returned HTTP %d", response.StatusCode)
 	}
 	var result instanceResponse
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+	if err := decodeSingleJSON(response.Body, &result); err != nil {
 		return Instance{}, fmt.Errorf("decode Vast instance response: %w", err)
 	}
 	if result.Instance.ID != instanceID {
@@ -77,6 +87,108 @@ type createResponse struct {
 
 func NewClient(baseURL, token string) *Client {
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), token: token, http: http.DefaultClient}
+}
+
+type sshKeyRecord struct {
+	Key       string `json:"key"`
+	SSHKey    string `json:"ssh_key"`
+	PublicKey string `json:"public_key"`
+}
+
+type sshKeysEnvelope struct {
+	SSHKeys []sshKeyRecord `json:"ssh_keys"`
+}
+
+func (client *Client) HasSSHKey(ctx context.Context, publicKey string) (bool, error) {
+	if strings.TrimSpace(client.token) == "" {
+		return false, fmt.Errorf("Vast API token is required")
+	}
+	normalized, err := sshkey.Normalize(publicKey)
+	if err != nil {
+		return false, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.baseURL+"/api/v0/ssh/", nil)
+	if err != nil {
+		return false, err
+	}
+	request.Header.Set("Authorization", "Bearer "+client.token)
+	response, err := client.http.Do(request)
+	if err != nil {
+		return false, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if response.StatusCode == http.StatusForbidden {
+		return false, fmt.Errorf("Vast list SSH keys returned HTTP 403; VAST_API_KEY must grant user_read at https://cloud.vast.ai/manage-keys/")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return false, fmt.Errorf("Vast list SSH keys returned HTTP %d", response.StatusCode)
+	}
+	raw := json.RawMessage{}
+	if err := json.NewDecoder(response.Body).Decode(&raw); err != nil {
+		return false, fmt.Errorf("decode Vast SSH keys response: %w", err)
+	}
+	var records []sshKeyRecord
+	if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) {
+		if err := json.Unmarshal(raw, &records); err != nil {
+			return false, fmt.Errorf("decode Vast SSH keys response: %w", err)
+		}
+	} else {
+		var envelope sshKeysEnvelope
+		if err := json.Unmarshal(raw, &envelope); err != nil {
+			return false, fmt.Errorf("decode Vast SSH keys response: %w", err)
+		}
+		records = envelope.SSHKeys
+	}
+	for _, record := range records {
+		candidate := record.Key
+		if strings.TrimSpace(candidate) == "" {
+			candidate = record.SSHKey
+		}
+		if strings.TrimSpace(candidate) == "" {
+			candidate = record.PublicKey
+		}
+		value, err := sshkey.Normalize(candidate)
+		if err == nil && value == normalized {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (client *Client) AddSSHKey(ctx context.Context, publicKey string) error {
+	if strings.TrimSpace(client.token) == "" {
+		return fmt.Errorf("Vast API token is required")
+	}
+	if _, err := sshkey.Normalize(publicKey); err != nil {
+		return err
+	}
+	body, err := json.Marshal(struct {
+		SSHKey string `json:"ssh_key"`
+	}{SSHKey: strings.TrimSpace(publicKey)})
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, client.baseURL+"/api/v0/ssh/", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+client.token)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := client.http.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("Vast create SSH key returned HTTP 403; VAST_API_KEY must grant user_write at https://cloud.vast.ai/manage-keys/")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("Vast create SSH key returned HTTP %d", response.StatusCode)
+	}
+	return nil
 }
 
 func isDigestImage(image string) bool {

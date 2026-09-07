@@ -18,12 +18,14 @@ func Path(configHome string) string {
 }
 
 type Config struct {
-	Version  int      `toml:"version"`
-	Profile  string   `toml:"profile"`
-	Provider Provider `toml:"provider"`
-	Route    Route    `toml:"route"`
-	SSH      SSH      `toml:"ssh"`
-	Model    Model    `toml:"model,omitempty"`
+	Version          int      `toml:"version"`
+	Profile          string   `toml:"profile"`
+	Provider         Provider `toml:"provider"`
+	Route            Route    `toml:"route"`
+	SSH              SSH      `toml:"ssh"`
+	Model            Model    `toml:"model,omitempty"`
+	DeploymentRecipe string   `toml:"deployment_recipe,omitempty"`
+	RestartPending   bool     `toml:"restart_pending,omitempty"`
 }
 
 // Model contains deployment-derived limits, usable only when discovery matches ID.

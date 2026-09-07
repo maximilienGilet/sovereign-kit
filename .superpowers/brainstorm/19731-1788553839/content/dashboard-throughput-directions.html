@@ -1,0 +1,84 @@
+<style>
+  .tui-grid { display:grid; grid-template-columns:repeat(3,minmax(280px,1fr)); gap:18px; align-items:start; }
+  .tui-card { cursor:pointer; border:1px solid #2c4851; border-radius:10px; overflow:hidden; background:#050808; transition:.18s ease; }
+  .tui-card:hover,.tui-card.selected { border-color:#60dbc0; box-shadow:0 0 0 1px #60dbc0,0 0 28px rgba(96,219,192,.11); transform:translateY(-2px); }
+  .terminal { min-height:410px; padding:16px; color:#d9e1e1; background:#020404; font:13px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre; overflow:hidden; }
+  .cyan { color:#60dbc0; } .blue { color:#56b6d8; } .dim { color:#61757c; } .white {color:#eef5f4} .amber{color:#e9ab4e}
+  .choice-copy { padding:14px 16px 17px; border-top:1px solid #18282d; }
+  .choice-copy h3 { margin:0 0 6px; } .choice-copy p { margin:0; color:#91a3a8; }
+  .recommend { color:#60dbc0; font-size:11px; letter-spacing:.09em; text-transform:uppercase; margin-bottom:7px; }
+  @media(max-width:1100px){.tui-grid{grid-template-columns:1fr}.terminal{min-height:auto}}
+</style>
+
+<h2>Quelle direction pour le dashboard vivant ?</h2>
+<p class="subtitle">Même télémétrie réelle, trois hiérarchies TUI. Clique sur celle qui donne le mieux la sensation que le modèle travaille.</p>
+
+<div class="tui-grid">
+  <div class="tui-card" data-choice="hero-scope" onclick="toggleSelect(this)">
+    <div class="terminal"><span class="cyan">PRIVATE ENDPOINT</span>                         <span class="dim">● LIVE</span>
+
+╭─ <span class="cyan">GENERATION VELOCITY</span> ───────────────────╮
+│                                      │
+│  <span class="white">48.7</span> <span class="dim">tok/s</span>       <span class="dim">peak</span> <span class="white">61.2</span>      │
+│                                      │
+│ <span class="cyan">⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠶⠛⠉⠙⢦⠀⠀⠀⠀⠀⠀</span> │
+│ <span class="cyan">⠀⠀⠀⢀⣀⠀⠀⢀⡤⠞⠁⠀⠀⠀⠀⠀⠈⢧⣀⣀⠀⠀</span> │
+│ <span class="blue">⣀⡴⠚⠉⠈⠙⠲⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠲</span> │
+│ <span class="dim">−60s            −30s               now</span> │
+╰──────────────────────────────────────╯
+╭─ <span class="cyan">RUNTIME</span> ─────╮ ╭─ <span class="cyan">MEMORY</span> ───────╮
+│ <span class="white">2</span> active · <span class="white">0</span> queued │ │ KV  <span class="cyan">███████</span><span class="dim">░░░</span> 68% │
+│ prompt  <span class="white">812 tok/s</span>  │ │ ctx 131K · out 16K │
+╰───────────────────╯ ╰────────────────────╯
+
+<span class="dim">Vast #49882495 · RTX 5090 · France · $0.36/h</span></div>
+    <div class="choice-copy"><div class="recommend">Recommandé</div><h3>A · Hero Scope</h3><p>Le tok/s devient le signal principal. Les autres métriques restent compactes et immédiatement corrélables.</p></div>
+  </div>
+
+  <div class="tui-card" data-choice="dual-trace" onclick="toggleSelect(this)">
+    <div class="terminal"><span class="cyan">PRIVATE ENDPOINT</span>                         <span class="dim">● LIVE</span>
+
+╭─ <span class="cyan">THROUGHPUT · LAST 60s</span> ────────────────╮
+│ <span class="dim">64 ┤</span>                  <span class="cyan">╭─╮</span>               │
+│ <span class="dim">48 ┤</span>       <span class="cyan">╭──╮</span>    <span class="cyan">╭╯ ╰╮  ╭──</span>       │
+│ <span class="dim">32 ┤</span> <span class="cyan">╭─────╯  ╰────╯   ╰──╯</span>          │
+│ <span class="dim">16 ┤</span> <span class="blue">╰──────────────────────────────</span> │
+│ <span class="dim"> 0 ┼──────────────────────────────────</span> │
+│    <span class="cyan">━ generation 48.7</span>  <span class="blue">━ prompt 11.4</span> │
+╰──────────────────────────────────────╯
+
+╭─ <span class="cyan">NOW</span> ─────────────────────────────────╮
+│ ACTIVE       <span class="white">02</span>     QUEUED         <span class="white">00</span> │
+│ KV CACHE     <span class="white">68%</span>    CONTEXT      <span class="white">131K</span> │
+│ AVG 60s  <span class="white">43.1 tok/s</span>  PEAK  <span class="white">61.2 tok/s</span> │
+╰──────────────────────────────────────╯
+
+<span class="dim">Endpoint verified · tunnel open · checked 2s ago</span>
+<span class="dim">Vast #49882495 · RTX 5090 · $0.36/h</span></div>
+    <div class="choice-copy"><h3>B · Dual Trace</h3><p>Deux courbes superposées pour génération et prompt. Plus analytique, mais plus dense et moins spectaculaire.</p></div>
+  </div>
+
+  <div class="tui-card" data-choice="telemetry-wall" onclick="toggleSelect(this)">
+    <div class="terminal"><span class="cyan">PRIVATE ENDPOINT</span>                         <span class="dim">● LIVE</span>
+
+╭─ <span class="cyan">MODEL PULSE</span> ────────────────────────╮
+│ <span class="cyan">▁▂▃▅▆▅▄▆▇█▆▅▃▄▆▇▆▅▇</span>  <span class="white">48.7 tok/s</span> │
+╰──────────────────────────────────────╯
+╭─ <span class="cyan">LOAD</span> ──────────╮ ╭─ <span class="cyan">CACHE</span> ─────────╮
+│ requests   <span class="white">02</span> │ │ KV       <span class="white">68%</span> │
+│ queued     <span class="white">00</span> │ │ <span class="cyan">████████</span><span class="dim">░░░</span> │
+│ prompt  <span class="white">812 t/s</span> │ │ slots      <span class="white">2</span> │
+╰───────────────────╯ ╰───────────────────╯
+╭─ <span class="cyan">SESSION</span> ────────────────────────────╮
+│ uptime   <span class="white">01:47:23</span>  estimated cost  <span class="amber">$0.64</span> │
+│ RTX 5090 · France · <span class="white">$0.36/hour</span>         │
+╰──────────────────────────────────────╯
+╭─ <span class="cyan">CONNECTION</span> ─────────────────────────╮
+│ <span class="white">http://127.0.0.1:30000/v1</span>           │
+│ unsloth/Qwen3.8-27B-GGUF             │
+╰──────────────────────────────────────╯
+
+<span class="dim">[c] copy endpoint  [i] integrations  [q] quit</span></div>
+    <div class="choice-copy"><h3>C · Telemetry Wall</h3><p>Un cockpit de cartes très visuel. Excellent aperçu global, mais la courbe raconte moins bien l’évolution.</p></div>
+  </div>
+</div>
