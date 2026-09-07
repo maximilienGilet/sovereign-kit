@@ -60,6 +60,7 @@ func runResume(args []string, input io.Reader, output io.Writer, configPath stri
 		return fmt.Errorf("read instance %d: %w", deployment.Instance.ID, err)
 	}
 	if !strings.EqualFold(instance.Status, "running") {
+		fmt.Fprintf(output, "Instance %d is %s, requesting start and waiting…\n", deployment.Instance.ID, instance.Status)
 		if err := client.StartInstance(ctx, deployment.Instance.ID); err != nil {
 			var queued *vast.StateChangeError
 			if !errors.As(err, &queued) || !queued.Queued() {

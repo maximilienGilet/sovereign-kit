@@ -31,7 +31,7 @@ func (autoConfirmIdentity) ConfirmIdentitySetup(context.Context, string, bool) (
 	return true, nil
 }
 
-func defaultProvisionDeps(client *vast.Client, input io.Reader, output io.Writer) provision.Deps {
+func defaultProvisionDeps(client *vast.Client, input io.Reader, output io.Writer, progress func(string)) provision.Deps {
 	return provision.Deps{
 		Vast: client,
 		Identity: provision.IdentityFunc(func(ctx context.Context, path string) error {
@@ -50,7 +50,7 @@ func defaultProvisionDeps(client *vast.Client, input io.Reader, output io.Writer
 			answer := readConfirmLine(input)
 			return answer == "y" || answer == "yes", nil
 		},
-		Progress: func(line string) { fmt.Fprintln(output, line) },
+		Progress: progress,
 	}
 }
 
@@ -183,14 +183,21 @@ func runUp(args []string, input io.Reader, output io.Writer, configPath string) 
 	client := vast.NewClient(vastAPIBaseURL, token)
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	spin := newSpinner(os.Stderr, "Provisioning "+resolved.ID)
+	deps := defaultProvisionDeps(client, input, output, func(line string) {
+		fmt.Fprintln(os.Stderr, line)
+		spin.SetMessage(line)
+	})
 	deployment, err := provisionPrepare(sigCtx, &store, dir, provision.Inputs{
 		Recipe: resolved, Offer: chosen.Offer, CapUSD: query.CapUSD,
 		Port: port, DeploymentID: store.NextID(resolved.ID, time.Now()),
 		VerifyHostKey: *verifyHostKey, ReadyTimeout: 10 * time.Minute,
-	}, defaultProvisionDeps(client, input, output))
+	}, deps)
 	if err != nil {
+		spin.Stop("Provisioning failed")
 		return err
 	}
+	spin.Stop("Server launched")
 	return serveTunnel(sigCtx, output, dir, &store, deployment, client)
 }
 

@@ -67,15 +67,87 @@ func requireNoLiveDeployment(store state.Store) error {
 	return nil
 }
 
+// isTerminalFile reports whether f is a character device (a terminal).
+func isTerminalFile(file *os.File) bool {
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
 // stdinInteractive reports whether prompts can reach a human. Overridable
 // in tests; production checks for a character device.
 var stdinInteractive = func(input io.Reader) bool {
 	file, ok := input.(*os.File)
-	if !ok {
-		return false
+	return ok && isTerminalFile(file)
+}
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// spinner shows live state on terminals while long phases run. On
+// non-terminals it stays silent and only prints the final line, so piped
+// logs keep milestones (printed separately) without animation garbage.
+type spinner struct {
+	out     io.Writer
+	message string
+	frame   int
+	animate bool
+	stop    chan struct{}
+	done    chan struct{}
+	mu      sync.Mutex
+}
+
+func newSpinner(out io.Writer, message string) *spinner {
+	spin := &spinner{
+		out: out, message: message,
+		stop: make(chan struct{}), done: make(chan struct{}),
 	}
-	info, err := file.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	if file, ok := out.(*os.File); ok && isTerminalFile(file) {
+		spin.animate = true
+		go spin.spin()
+	}
+	return spin
+}
+
+// SetMessage updates the live state text.
+func (spin *spinner) SetMessage(message string) {
+	spin.mu.Lock()
+	defer spin.mu.Unlock()
+	spin.message = message
+}
+
+// render formats one animation frame. Pure for tests.
+func (spin *spinner) render() string {
+	spin.mu.Lock()
+	defer spin.mu.Unlock()
+	frame := spinnerFrames[spin.frame%len(spinnerFrames)]
+	return "\r" + frame + " " + spin.message
+}
+
+func (spin *spinner) spin() {
+	defer close(spin.done)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-spin.stop:
+			return
+		case <-ticker.C:
+			spin.mu.Lock()
+			spin.frame++
+			text := "\r" + spinnerFrames[spin.frame%len(spinnerFrames)] + " " + spin.message
+			spin.mu.Unlock()
+			fmt.Fprint(spin.out, text)
+		}
+	}
+}
+
+// Stop ends the animation and prints the outcome line.
+func (spin *spinner) Stop(final string) {
+	if spin.animate {
+		close(spin.stop)
+		<-spin.done
+		fmt.Fprint(spin.out, "\r\033[K")
+	}
+	fmt.Fprintln(spin.out, final)
 }
 
 // readConfirmLine reads one prompt answer. It consumes exactly one line:

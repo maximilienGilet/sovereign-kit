@@ -141,6 +141,7 @@ func Provision(ctx context.Context, store *state.Store, dir string, inputs Input
 	if err := store.Save(dir); err != nil {
 		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
+	progress(fmt.Sprintf("Instance %d rented, waiting until ready…", instanceID))
 	instance, err := waitRunning(ctx, deps, deps.Vast, instanceID, inputs.ReadyTimeout)
 	if err != nil {
 		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
@@ -150,6 +151,7 @@ func Provision(ctx context.Context, store *state.Store, dir string, inputs Input
 	if err := save(store, dir, &deployment); err != nil {
 		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
+	progress("Instance ready, pinning host keys…")
 	keys, err := deps.Scanner.Scan(ctx, instance.SSHHost, instance.SSHPort)
 	if err != nil {
 		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
@@ -172,6 +174,7 @@ func Provision(ctx context.Context, store *state.Store, dir string, inputs Input
 	if err := deps.Trust.Save(state.KnownHostsPath(dir, inputs.DeploymentID), keys.Raw); err != nil {
 		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
+	progress("Host keys pinned, launching server…")
 	deployment.State = state.Preparing
 	if err := save(store, dir, &deployment); err != nil {
 		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
