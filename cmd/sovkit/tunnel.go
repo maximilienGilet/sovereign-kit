@@ -60,9 +60,13 @@ func resolveTarget(configPath, id string) (string, state.Store, state.Deployment
 // a new deployment while another owns a live instance is refused.
 func requireNoLiveDeployment(store state.Store) error {
 	for _, deployment := range store.Deployments {
-		if deployment.State.Live() {
-			return fmt.Errorf("deployment %q owns a live instance (%s); resume, down or destroy it first", deployment.ID, deployment.State)
+		if !deployment.State.Live() {
+			continue
 		}
+		if deployment.State == state.Failed {
+			return fmt.Errorf("deployment %q failed and its instance may still bill; run `sovkit destroy %s` first (or resume/down it if it can still serve)", deployment.ID, deployment.ID)
+		}
+		return fmt.Errorf("deployment %q owns a live instance (%s); resume, down or destroy it first", deployment.ID, deployment.State)
 	}
 	return nil
 }

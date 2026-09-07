@@ -53,6 +53,8 @@ func TestRequireNoLiveDeploymentBlocksLive(t *testing.T) {
 	}}
 	if err := requireNoLiveDeployment(quiet); err == nil {
 		t.Fatal("expected failed deployment to block: it may still bill")
+	} else if !strings.Contains(err.Error(), "sovkit destroy f") {
+		t.Fatalf("error must guide to destroy: %v", err)
 	}
 	if err := requireNoLiveDeployment(state.Store{}); err != nil {
 		t.Fatalf("empty store must allow: %v", err)
