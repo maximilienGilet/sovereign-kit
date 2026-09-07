@@ -90,6 +90,7 @@ func NewClient(baseURL, token string) *Client {
 }
 
 type sshKeyRecord struct {
+	ID        int    `json:"id"`
 	Key       string `json:"key"`
 	SSHKey    string `json:"ssh_key"`
 	PublicKey string `json:"public_key"`
@@ -99,49 +100,53 @@ type sshKeysEnvelope struct {
 	SSHKeys []sshKeyRecord `json:"ssh_keys"`
 }
 
-func (client *Client) HasSSHKey(ctx context.Context, publicKey string) (bool, error) {
+// SSHKey is one account-level public key with its numeric id.
+type SSHKey struct {
+	ID  int
+	Key string
+}
+
+// ListSSHKeys returns the account keys. Vast answers 404 when none exist.
+func (client *Client) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
 	if strings.TrimSpace(client.token) == "" {
-		return false, fmt.Errorf("Vast API token is required")
-	}
-	normalized, err := sshkey.Normalize(publicKey)
-	if err != nil {
-		return false, err
+		return nil, fmt.Errorf("Vast API token is required")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.baseURL+"/api/v0/ssh/", nil)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	request.Header.Set("Authorization", "Bearer "+client.token)
 	response, err := client.http.Do(request)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusNotFound {
-		return false, nil
+		return nil, nil
 	}
 	if response.StatusCode == http.StatusForbidden {
-		return false, fmt.Errorf("Vast list SSH keys returned HTTP 403; VAST_API_KEY must grant user_read at https://cloud.vast.ai/manage-keys/")
+		return nil, fmt.Errorf("Vast list SSH keys returned HTTP 403; VAST_API_KEY must grant user_read at https://cloud.vast.ai/manage-keys/")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return false, fmt.Errorf("Vast list SSH keys returned HTTP %d", response.StatusCode)
+		return nil, fmt.Errorf("Vast list SSH keys returned HTTP %d", response.StatusCode)
 	}
 	raw := json.RawMessage{}
 	if err := json.NewDecoder(response.Body).Decode(&raw); err != nil {
-		return false, fmt.Errorf("decode Vast SSH keys response: %w", err)
+		return nil, fmt.Errorf("decode Vast SSH keys response: %w", err)
 	}
 	var records []sshKeyRecord
 	if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) {
 		if err := json.Unmarshal(raw, &records); err != nil {
-			return false, fmt.Errorf("decode Vast SSH keys response: %w", err)
+			return nil, fmt.Errorf("decode Vast SSH keys response: %w", err)
 		}
 	} else {
 		var envelope sshKeysEnvelope
 		if err := json.Unmarshal(raw, &envelope); err != nil {
-			return false, fmt.Errorf("decode Vast SSH keys response: %w", err)
+			return nil, fmt.Errorf("decode Vast SSH keys response: %w", err)
 		}
 		records = envelope.SSHKeys
 	}
+	keys := make([]SSHKey, 0, len(records))
 	for _, record := range records {
 		candidate := record.Key
 		if strings.TrimSpace(candidate) == "" {
@@ -150,7 +155,25 @@ func (client *Client) HasSSHKey(ctx context.Context, publicKey string) (bool, er
 		if strings.TrimSpace(candidate) == "" {
 			candidate = record.PublicKey
 		}
-		value, err := sshkey.Normalize(candidate)
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		keys = append(keys, SSHKey{ID: record.ID, Key: strings.TrimSpace(candidate)})
+	}
+	return keys, nil
+}
+
+func (client *Client) HasSSHKey(ctx context.Context, publicKey string) (bool, error) {
+	normalized, err := sshkey.Normalize(publicKey)
+	if err != nil {
+		return false, err
+	}
+	keys, err := client.ListSSHKeys(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, key := range keys {
+		value, err := sshkey.Normalize(key.Key)
 		if err == nil && value == normalized {
 			return true, nil
 		}
@@ -187,6 +210,42 @@ func (client *Client) AddSSHKey(ctx context.Context, publicKey string) error {
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("Vast create SSH key returned HTTP %d", response.StatusCode)
+	}
+	return nil
+}
+
+// DeleteSSHKey removes one account key by numeric id. Vast soft-deletes.
+func (client *Client) DeleteSSHKey(ctx context.Context, id int) error {
+	if strings.TrimSpace(client.token) == "" {
+		return fmt.Errorf("Vast API token is required")
+	}
+	if id <= 0 {
+		return fmt.Errorf("Vast SSH key id must be positive")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, fmt.Sprintf("%s/api/v0/ssh/%d", client.baseURL, id), nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+client.token)
+	response, err := client.http.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("Vast delete SSH key returned HTTP 403; VAST_API_KEY must grant user_write at https://cloud.vast.ai/manage-keys/")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("Vast delete SSH key returned HTTP %d", response.StatusCode)
+	}
+	var result struct {
+		Success bool `json:"success"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return fmt.Errorf("decode Vast delete-key response: %w", err)
+	}
+	if !result.Success {
+		return fmt.Errorf("Vast did not confirm SSH key deletion")
 	}
 	return nil
 }

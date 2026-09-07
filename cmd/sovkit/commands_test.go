@@ -21,14 +21,14 @@ func TestRunHelpListsTheReadVerbs(t *testing.T) {
 	if err := run([]string{"help"}, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"recipes", "offers", "status", "doctor"} {
+	for _, command := range []string{"recipes", "offers", "status", "down", "destroy", "resume", "logs", "doctor"} {
 		if !strings.Contains(output.String(), command) {
 			t.Fatalf("help does not describe %q: %s", command, output.String())
 		}
 	}
-	for _, removed := range []string{"dashboard", "catalog", "setup", "resume", "start", "tunnel"} {
+	for _, removed := range []string{"  dashboard ", "  catalog ", "  setup ", "  start ", "  tunnel "} {
 		if strings.Contains(output.String(), removed) {
-			t.Fatalf("help still describes removed %q: %s", removed, output.String())
+			t.Fatalf("help still describes removed %q", strings.TrimSpace(removed))
 		}
 	}
 }
@@ -36,7 +36,7 @@ func TestRunHelpListsTheReadVerbs(t *testing.T) {
 func TestBareArgsShowUsage(t *testing.T) {
 	for _, args := range [][]string{nil, {"--help"}, {"-h"}} {
 		var output bytes.Buffer
-		if err := runWith(args, &output, "missing"); err != nil {
+		if err := runWith(args, strings.NewReader(""), &output, "missing"); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(output.String(), "Usage:") {
@@ -170,7 +170,7 @@ func TestResolveInterruptibleEnforcesRecipeGate(t *testing.T) {
 
 func TestRecipesListsBuiltin(t *testing.T) {
 	var output bytes.Buffer
-	if err := runWith([]string{"recipes"}, &output, "missing"); err != nil {
+	if err := runWith([]string{"recipes"}, strings.NewReader(""), &output, "missing"); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"qwen-studio", "qwen-solo-rtx5090"} {
@@ -182,7 +182,7 @@ func TestRecipesListsBuiltin(t *testing.T) {
 
 func TestRecipesJSONParses(t *testing.T) {
 	var output bytes.Buffer
-	if err := runWith([]string{"recipes", "--json"}, &output, "missing"); err != nil {
+	if err := runWith([]string{"recipes", "--json"}, strings.NewReader(""), &output, "missing"); err != nil {
 		t.Fatal(err)
 	}
 	var list []map[string]any
@@ -196,7 +196,7 @@ func TestRecipesJSONParses(t *testing.T) {
 
 func TestOffersRejectsUnknownRecipeWithoutNetwork(t *testing.T) {
 	var output bytes.Buffer
-	err := runWith([]string{"offers", "nope"}, &output, "missing")
+	err := runWith([]string{"offers", "nope"}, strings.NewReader(""), &output, "missing")
 	var usage *usageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("expected usage error, got %v", err)
@@ -205,7 +205,7 @@ func TestOffersRejectsUnknownRecipeWithoutNetwork(t *testing.T) {
 
 func TestOffersRefusesInterruptibleForForbiddingRecipe(t *testing.T) {
 	var output bytes.Buffer
-	err := runWith([]string{"offers", "qwen-solo-rtx5090", "--interruptible"}, &output, "missing")
+	err := runWith([]string{"offers", "qwen-solo-rtx5090", "--interruptible"}, strings.NewReader(""), &output, "missing")
 	if err == nil || !strings.Contains(err.Error(), "forbids interruptible") {
 		t.Fatalf("expected gate refusal, got %v", err)
 	}
@@ -219,7 +219,7 @@ func TestOffersRequiresToken(t *testing.T) {
 	t.Setenv("VAST_API_KEY", "")
 	dir := t.TempDir()
 	var output bytes.Buffer
-	err := runWith([]string{"offers", "qwen-solo-rtx5090"}, &output, filepath.Join(dir, "config.toml"))
+	err := runWith([]string{"offers", "qwen-solo-rtx5090"}, strings.NewReader(""), &output, filepath.Join(dir, "config.toml"))
 	if err == nil || !strings.Contains(err.Error(), "VAST_API_KEY") {
 		t.Fatalf("expected token error, got %v", err)
 	}
@@ -245,7 +245,7 @@ func TestOffersListsRankedTable(t *testing.T) {
 	t.Setenv("VAST_API_KEY", "test-token")
 	dir := t.TempDir()
 	var output bytes.Buffer
-	if err := runWith([]string{"offers", "qwen-solo-rtx5090"}, &output, filepath.Join(dir, "config.toml")); err != nil {
+	if err := runWith([]string{"offers", "qwen-solo-rtx5090"}, strings.NewReader(""), &output, filepath.Join(dir, "config.toml")); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
@@ -261,7 +261,7 @@ func TestOffersCapFiltersAboveCap(t *testing.T) {
 	t.Setenv("VAST_API_KEY", "test-token")
 	dir := t.TempDir()
 	var output bytes.Buffer
-	if err := runWith([]string{"offers", "qwen-solo-rtx5090", "--cap", "0.10"}, &output, filepath.Join(dir, "config.toml")); err != nil {
+	if err := runWith([]string{"offers", "qwen-solo-rtx5090", "--cap", "0.10"}, strings.NewReader(""), &output, filepath.Join(dir, "config.toml")); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "No eligible offers") {
@@ -274,7 +274,7 @@ func TestOffersJSONParses(t *testing.T) {
 	t.Setenv("VAST_API_KEY", "test-token")
 	dir := t.TempDir()
 	var output bytes.Buffer
-	if err := runWith([]string{"offers", "qwen-solo-rtx5090", "--json"}, &output, filepath.Join(dir, "config.toml")); err != nil {
+	if err := runWith([]string{"offers", "qwen-solo-rtx5090", "--json"}, strings.NewReader(""), &output, filepath.Join(dir, "config.toml")); err != nil {
 		t.Fatal(err)
 	}
 	var recommendations []map[string]any
@@ -317,7 +317,7 @@ func TestStatusShowsActiveDeployment(t *testing.T) {
 	dir := t.TempDir()
 	deployment := writeStatusFixture(t, dir)
 	var output bytes.Buffer
-	if err := runWith([]string{"status"}, &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+	if err := runWith([]string{"status"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{deployment.ID, "serving", "127.0.0.1:30000"} {
@@ -331,7 +331,7 @@ func TestStatusJSONParses(t *testing.T) {
 	dir := t.TempDir()
 	deployment := writeStatusFixture(t, dir)
 	var output bytes.Buffer
-	if err := runWith([]string{"status", deployment.ID, "--json"}, &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+	if err := runWith([]string{"status", deployment.ID, "--json"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
 		t.Fatal(err)
 	}
 	var decoded map[string]any
@@ -346,11 +346,11 @@ func TestStatusJSONParses(t *testing.T) {
 func TestStatusWithoutDeploymentsErrors(t *testing.T) {
 	dir := t.TempDir()
 	var output bytes.Buffer
-	err := runWith([]string{"status"}, &output, filepath.Join(state.Dir(dir), "config.toml"))
+	err := runWith([]string{"status"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml"))
 	if err == nil || !strings.Contains(err.Error(), "no active deployment") {
 		t.Fatalf("expected no-active error, got %v", err)
 	}
-	err = runWith([]string{"status", "missing"}, &output, filepath.Join(state.Dir(dir), "config.toml"))
+	err = runWith([]string{"status", "missing"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml"))
 	if err == nil || !strings.Contains(err.Error(), "unknown deployment") {
 		t.Fatalf("expected unknown error, got %v", err)
 	}
@@ -359,7 +359,7 @@ func TestStatusWithoutDeploymentsErrors(t *testing.T) {
 func TestDoctorWithoutActiveDeploymentErrors(t *testing.T) {
 	dir := t.TempDir()
 	var output bytes.Buffer
-	err := runWith([]string{"doctor"}, &output, filepath.Join(state.Dir(dir), "config.toml"))
+	err := runWith([]string{"doctor"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml"))
 	if err == nil || !strings.Contains(err.Error(), "no active deployment") {
 		t.Fatalf("expected no-active error, got %v", err)
 	}

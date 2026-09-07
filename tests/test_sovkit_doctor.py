@@ -111,7 +111,12 @@ class SovkitDoctorTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("recipes", result.stdout)
         self.assertIn("offers", result.stdout)
+        self.assertIn("up", result.stdout)
         self.assertIn("status", result.stdout)
+        self.assertIn("down", result.stdout)
+        self.assertIn("destroy", result.stdout)
+        self.assertIn("resume", result.stdout)
+        self.assertIn("logs", result.stdout)
         self.assertIn("doctor", result.stdout)
         self.assertNotIn("dashboard", result.stdout)
 

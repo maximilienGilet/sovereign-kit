@@ -64,7 +64,7 @@ func exitCode(err error) int {
 func main() {
 	path, err := defaultConfigPath()
 	if err == nil {
-		err = runWith(os.Args[1:], os.Stdout, path)
+		err = runWith(os.Args[1:], os.Stdin, os.Stdout, path)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "sovkit:", err)
@@ -77,29 +77,44 @@ func run(args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return runWith(args, output, path)
+	return runWith(args, os.Stdin, output, path)
 }
 
-func runWith(args []string, output io.Writer, configPath string) error {
+func runWith(args []string, input io.Reader, output io.Writer, configPath string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		_, err := fmt.Fprintln(output, `Usage: sovkit <command>
 
 Commands:
   recipes     List the embedded recipes
   offers      Search eligible Vast offers for a recipe (no renting)
+  up          Provision a recipe: rent, prepare, serve, tunnel
   status      Show a deployment (the active one by default)
+  down        Stop a deployment instance (billing paused)
+  destroy     Destroy a deployment instance and its keys
+  resume      Re-attach the tunnel to a deployment
+  logs        Show remote server logs for a deployment
   doctor      Check the local route health`)
 		return err
 	}
 	switch args[0] {
 	case "recipes":
-		return runRecipes(args[1:], output)
+		return runRecipes(args[1:], input, output)
 	case "offers":
-		return runOffers(args[1:], output, configPath)
+		return runOffers(args[1:], input, output, configPath)
+	case "up":
+		return runUp(args[1:], input, output, configPath)
 	case "status":
-		return runStatus(args[1:], output, configPath)
+		return runStatus(args[1:], input, output, configPath)
+	case "down":
+		return runDown(args[1:], input, output, configPath)
+	case "destroy":
+		return runDestroy(args[1:], input, output, configPath)
+	case "resume":
+		return runResume(args[1:], input, output, configPath)
+	case "logs":
+		return runLogs(args[1:], input, output, configPath)
 	case "doctor":
-		return runDoctor(output, configPath)
+		return runDoctor(input, output, configPath)
 	default:
 		return usageErrorf("unknown command %q (try: sovkit help)", args[0])
 	}
@@ -210,7 +225,7 @@ func legacyHint(dir string, store state.Store) string {
 	return ""
 }
 
-func runRecipes(args []string, output io.Writer) error {
+func runRecipes(args []string, input io.Reader, output io.Writer) error {
 	set := flag.NewFlagSet("recipes", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	asJSON := set.Bool("json", false, "machine-readable output")
@@ -236,7 +251,78 @@ func runRecipes(args []string, output io.Writer) error {
 	return nil
 }
 
-func runOffers(args []string, output io.Writer, configPath string) error {
+// offerQuery is a validated offer search (no network yet).
+type offerQuery struct {
+	Recipe        recipe.Recipe
+	Countries     []string
+	GPUModel      string
+	StrictGPU     bool
+	Interruptible bool
+	CapUSD        float64
+	Limit         int
+}
+
+// resolveOfferQuery validates recipe + flags into a runnable query.
+func resolveOfferQuery(resolved recipe.Recipe, store state.Store, gpuFlag, regionFlag string, countryFlags []string, interruptibleFlag bool, capFlag float64, limit int) (offerQuery, error) {
+	model, strict, err := resolveGPUModel(resolved, gpuFlag)
+	if err != nil {
+		return offerQuery{}, err
+	}
+	bid, err := resolveInterruptible(resolved, interruptibleFlag)
+	if err != nil {
+		return offerQuery{}, err
+	}
+	codes, err := vast.GeographicCountries(regionFlag, countryFlags)
+	if err != nil {
+		return offerQuery{}, usageErrorf("invalid geography: %v", err)
+	}
+	cap := capFlag
+	if cap <= 0 {
+		cap = store.Settings.SpendCapUSD
+	}
+	return offerQuery{
+		Recipe: resolved, Countries: codes, GPUModel: model, StrictGPU: strict,
+		Interruptible: bid, CapUSD: cap, Limit: limit,
+	}, nil
+}
+
+// runOfferQuery executes the search: offers, cap filter, rank at 730h.
+func runOfferQuery(ctx context.Context, token string, query offerQuery) ([]planner.Recommendation, error) {
+	offers, err := vast.NewClient(vastAPIBaseURL, token).SearchOffers(ctx, vast.SearchRequest{
+		Countries: query.Countries, Sort: vast.SortPrice, Limit: query.Limit,
+		GPUModel: query.GPUModel, GPUCount: query.Recipe.Requirements.GPUCount,
+		StrictGPU:     query.StrictGPU,
+		MinimumVRAMGB: query.Recipe.Requirements.MinimumVRAMGB,
+		MinimumDiskGB: query.Recipe.Requirements.MinimumDiskGB,
+		Interruptible: query.Interruptible,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return planner.Recommend(query.Recipe, filterOffersByCap(offers, query.CapUSD), monthlyHours), nil
+}
+
+// printOfferTable renders ranked recommendations for choosing.
+func printOfferTable(output io.Writer, recommendations []planner.Recommendation) {
+	fmt.Fprintln(output, "#  ID  $/H  $/MO  GPU  LOCATION  DOWN/UP  REL  DRIVER")
+	for index, recommendation := range recommendations {
+		offer := recommendation.Offer
+		price, monthly := "unknown", "unknown"
+		if !offer.PriceUnknown {
+			price = fmt.Sprintf("%.4g", offer.HourlyUSD)
+			monthly = fmt.Sprintf("%.0f", recommendation.MonthlyUSD)
+		}
+		reliability := "unknown"
+		if !offer.ReliabilityUnknown {
+			reliability = fmt.Sprintf("%.1f%%", offer.Reliability*100)
+		}
+		fmt.Fprintf(output, "%d  %d  %s  %s  %d× %s  %s  %.0f/%.0f  %s  %s\n",
+			index+1, offer.ID, price, monthly, offer.GPUCount, offer.GPUName,
+			offer.Location, offer.InetDownMBps, offer.InetUpMBps, reliability, offer.DriverVersion)
+	}
+}
+
+func runOffers(args []string, input io.Reader, output io.Writer, configPath string) error {
 	var countries countryList
 	set := flag.NewFlagSet("offers", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
@@ -258,26 +344,14 @@ func runOffers(args []string, output io.Writer, configPath string) error {
 	if err != nil {
 		return err
 	}
-	model, strict, err := resolveGPUModel(resolved, *gpu)
-	if err != nil {
-		return err
-	}
-	bid, err := resolveInterruptible(resolved, *interruptible)
-	if err != nil {
-		return err
-	}
 	dir := filepath.Dir(configPath)
 	store, err := state.Load(dir)
 	if err != nil {
 		return err
 	}
-	cap := *capUSD
-	if cap <= 0 {
-		cap = store.Settings.SpendCapUSD
-	}
-	codes, err := vast.GeographicCountries(*region, countries)
+	query, err := resolveOfferQuery(resolved, store, *gpu, *region, countries, *interruptible, *capUSD, *limit)
 	if err != nil {
-		return usageErrorf("invalid geography: %v", err)
+		return err
 	}
 	token, err := state.Token(dir)
 	if err != nil {
@@ -285,21 +359,10 @@ func runOffers(args []string, output io.Writer, configPath string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	offers, err := vast.NewClient(vastAPIBaseURL, token).SearchOffers(ctx, vast.SearchRequest{
-		Countries:     codes,
-		Sort:          vast.SortPrice,
-		Limit:         *limit,
-		GPUModel:      model,
-		GPUCount:      resolved.Requirements.GPUCount,
-		StrictGPU:     strict,
-		MinimumVRAMGB: resolved.Requirements.MinimumVRAMGB,
-		MinimumDiskGB: resolved.Requirements.MinimumDiskGB,
-		Interruptible: bid,
-	})
+	recommendations, err := runOfferQuery(ctx, token, query)
 	if err != nil {
 		return err
 	}
-	recommendations := planner.Recommend(resolved, filterOffersByCap(offers, cap), monthlyHours)
 	if *asJSON {
 		return writeJSON(output, recommendations)
 	}
@@ -307,26 +370,11 @@ func runOffers(args []string, output io.Writer, configPath string) error {
 		_, err := fmt.Fprintf(output, "No eligible offers for %s.\n", resolved.ID)
 		return err
 	}
-	fmt.Fprintln(output, "#  ID  $/H  $/MO  GPU  LOCATION  DOWN/UP  REL  DRIVER")
-	for index, recommendation := range recommendations {
-		offer := recommendation.Offer
-		price, monthly := "unknown", "unknown"
-		if !offer.PriceUnknown {
-			price = fmt.Sprintf("%.4g", offer.HourlyUSD)
-			monthly = fmt.Sprintf("%.0f", recommendation.MonthlyUSD)
-		}
-		reliability := "unknown"
-		if !offer.ReliabilityUnknown {
-			reliability = fmt.Sprintf("%.1f%%", offer.Reliability*100)
-		}
-		fmt.Fprintf(output, "%d  %d  %s  %s  %d× %s  %s  %.0f/%.0f  %s  %s\n",
-			index+1, offer.ID, price, monthly, offer.GPUCount, offer.GPUName,
-			offer.Location, offer.InetDownMBps, offer.InetUpMBps, reliability, offer.DriverVersion)
-	}
+	printOfferTable(output, recommendations)
 	return nil
 }
 
-func runStatus(args []string, output io.Writer, configPath string) error {
+func runStatus(args []string, input io.Reader, output io.Writer, configPath string) error {
 	set := flag.NewFlagSet("status", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	asJSON := set.Bool("json", false, "machine-readable output")
@@ -342,19 +390,13 @@ func runStatus(args []string, output io.Writer, configPath string) error {
 	if err != nil {
 		return err
 	}
-	var deployment state.Deployment
+	id := ""
 	if len(positionals) == 1 {
-		found, ok := store.Get(positionals[0])
-		if !ok {
-			return fmt.Errorf("unknown deployment %q", positionals[0])
-		}
-		deployment = found
-	} else {
-		active, ok := store.ActiveDeployment()
-		if !ok {
-			return fmt.Errorf("no active deployment.%s", legacyHint(dir, store))
-		}
-		deployment = active
+		id = positionals[0]
+	}
+	deployment, err := resolveDeployment(dir, store, id)
+	if err != nil {
+		return err
 	}
 	if *asJSON {
 		return writeJSON(output, deployment)
@@ -375,7 +417,7 @@ func runStatus(args []string, output io.Writer, configPath string) error {
 	return nil
 }
 
-func runDoctor(output io.Writer, configPath string) error {
+func runDoctor(input io.Reader, output io.Writer, configPath string) error {
 	if handled, err := runInstalledDoctor(output); handled {
 		return err
 	}
@@ -384,9 +426,9 @@ func runDoctor(output io.Writer, configPath string) error {
 	if err != nil {
 		return err
 	}
-	deployment, ok := store.ActiveDeployment()
-	if !ok {
-		return fmt.Errorf("no active deployment.%s", legacyHint(dir, store))
+	deployment, err := resolveDeployment(dir, store, "")
+	if err != nil {
+		return err
 	}
 	endpoint := fmt.Sprintf("http://%s:%d", deployment.Route.LocalHost, deployment.Route.LocalPort)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

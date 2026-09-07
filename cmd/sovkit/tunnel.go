@@ -1,0 +1,210 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/maximilienGilet/sovereign-kit/internal/cli"
+	"github.com/maximilienGilet/sovereign-kit/internal/route"
+	"github.com/maximilienGilet/sovereign-kit/internal/setup"
+	"github.com/maximilienGilet/sovereign-kit/internal/state"
+	"github.com/maximilienGilet/sovereign-kit/internal/vast"
+)
+
+// noActiveError names the way forward when nothing owns an instance.
+func noActiveError(dir string, store state.Store) error {
+	return fmt.Errorf("no active deployment.%s", legacyHint(dir, store))
+}
+
+// resolveDeployment finds a deployment by id, or the active one when id is
+// empty.
+func resolveDeployment(dir string, store state.Store, id string) (state.Deployment, error) {
+	if id != "" {
+		deployment, ok := store.Get(id)
+		if !ok {
+			return state.Deployment{}, fmt.Errorf("unknown deployment %q", id)
+		}
+		return deployment, nil
+	}
+	deployment, ok := store.ActiveDeployment()
+	if !ok {
+		return state.Deployment{}, noActiveError(dir, store)
+	}
+	return deployment, nil
+}
+
+// requireNoLiveDeployment enforces one live instance at a time: provisioning
+// a new deployment while another owns a live instance is refused.
+func requireNoLiveDeployment(store state.Store) error {
+	for _, deployment := range store.Deployments {
+		if deployment.State.Live() {
+			return fmt.Errorf("deployment %q owns a live instance (%s); resume, down or destroy it first", deployment.ID, deployment.State)
+		}
+	}
+	return nil
+}
+
+// stdinInteractive reports whether prompts can reach a human. Overridable
+// in tests; production checks for a character device.
+var stdinInteractive = func(input io.Reader) bool {
+	file, ok := input.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// readConfirmLine reads one prompt answer. It consumes exactly one line:
+// a fresh buffered reader per call would swallow piped input past the
+// newline, silently turning later answers into the default.
+func readConfirmLine(input io.Reader) string {
+	var line []byte
+	one := make([]byte, 1)
+	for {
+		n, err := input.Read(one)
+		if n > 0 {
+			if one[0] == '\n' {
+				break
+			}
+			line = append(line, one[0])
+		}
+		if err != nil {
+			break
+		}
+	}
+	return strings.ToLower(strings.TrimSpace(string(line)))
+}
+
+// tunnelSpec builds the SSH forward for a deployment. The tunnel always
+// enforces the pinned host key; pinning happens before first contact.
+func tunnelSpec(deployment state.Deployment) route.TunnelSpec {
+	return route.TunnelSpec{
+		SSHHost: deployment.SSH.Host, SSHPort: deployment.SSH.Port, SSHUser: deployment.SSH.User,
+		IdentityFile: deployment.SSH.IdentityFile, KnownHostsFile: deployment.SSH.KnownHostsFile,
+		LocalHost: deployment.Route.LocalHost, LocalPort: deployment.Route.LocalPort,
+		RemoteHost: deployment.Route.RemoteHost, RemotePort: deployment.Route.RemotePort,
+	}
+}
+
+// execTunnel is a started SSH forward process.
+type execTunnel struct {
+	cmd    *exec.Cmd
+	cancel context.CancelFunc
+	done   chan error
+	once   sync.Once
+	stop   error
+}
+
+// startExecTunnel builds and starts the forward. The caller supervises it.
+func startExecTunnel(ctx context.Context, spec route.TunnelSpec, output io.Writer) (*execTunnel, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	command, err := route.ForwardCommand(ctx, spec)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	command.Stdout, command.Stderr = output, output
+	tunnel := &execTunnel{cmd: command, cancel: cancel, done: make(chan error, 1)}
+	if err := command.Start(); err != nil {
+		cancel()
+		return nil, err
+	}
+	go func() { tunnel.done <- command.Wait() }()
+	return tunnel, nil
+}
+
+// Start is a no-op: the process is already running.
+func (tunnel *execTunnel) Start() error { return nil }
+
+// Done reports the process exit.
+func (tunnel *execTunnel) Done() <-chan error { return tunnel.done }
+
+// Stop cancels the process and waits for its exit.
+func (tunnel *execTunnel) Stop() error {
+	tunnel.once.Do(func() {
+		tunnel.cancel()
+		tunnel.stop = <-tunnel.done
+	})
+	return tunnel.stop
+}
+
+// persistDeployment writes one deployment change back to the store file.
+func persistDeployment(dir string, store *state.Store, deployment state.Deployment) error {
+	if err := store.Update(deployment); err != nil {
+		return err
+	}
+	return store.Save(dir)
+}
+
+// openTunnel starts one forward. Overridable in tests; production launches ssh.
+var openTunnel = func(ctx context.Context, spec route.TunnelSpec, output io.Writer) (cli.Tunnel, error) {
+	return startExecTunnel(ctx, spec, output)
+}
+
+// checkEndpoint verifies the local route answers. Overridable in tests.
+var checkEndpoint = route.Healthcheck
+
+// serveTunnel opens the forward for a prepared deployment, verifies the
+// route, marks it tunneled, and supervises until exit. Afterwards the
+// record settles to serving when the instance still runs, failed
+// otherwise; cancellation maps to nil because the instance outlives us.
+func serveTunnel(ctx context.Context, output io.Writer, dir string, store *state.Store, deployment state.Deployment, client *vast.Client) error {
+	endpoint := fmt.Sprintf("http://%s:%d", deployment.Route.LocalHost, deployment.Route.LocalPort)
+	tunnel, err := openTunnel(ctx, tunnelSpec(deployment), output)
+	if err != nil {
+		return err
+	}
+	healthCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	healthErr := checkEndpoint(healthCtx, endpoint)
+	cancel()
+	if healthErr != nil {
+		_ = tunnel.Stop()
+		return fmt.Errorf("server unhealthy at %s: %w", endpoint, healthErr)
+	}
+	deployment.State = state.Tunneled
+	if err := store.SetActive(deployment.ID); err != nil {
+		_ = tunnel.Stop()
+		return err
+	}
+	if err := persistDeployment(dir, store, deployment); err != nil {
+		_ = tunnel.Stop()
+		return err
+	}
+	if _, err := fmt.Fprintf(output, "Tunnel ready at %s\n", endpoint); err != nil {
+		_ = tunnel.Stop()
+		return err
+	}
+	_, err = cli.SuperviseTunnel(ctx, output, tunnel, endpoint, cli.StartDependencies{
+		Healthcheck: route.Healthcheck, Clock: setup.RealClock{},
+		PollInterval: 5 * time.Second, PollTimeout: 30 * time.Minute,
+	})
+	refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer refreshCancel()
+	status := ""
+	if instance, gerr := client.GetInstance(refreshCtx, deployment.Instance.ID); gerr == nil {
+		status = instance.Status
+	}
+	if strings.EqualFold(status, "running") {
+		deployment.State = state.Serving
+	} else {
+		deployment.State = state.Failed
+	}
+	if serr := persistDeployment(dir, store, deployment); serr != nil {
+		return serr
+	}
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}

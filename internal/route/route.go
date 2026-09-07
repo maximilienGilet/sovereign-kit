@@ -48,19 +48,50 @@ func requireReadableRegularFile(label, path string) error {
 	return nil
 }
 
-// Command creates the SSH process for cfg's fixed loopback forward.
-func Command(cfg config.Config) (*exec.Cmd, error) {
-	return CommandContext(context.Background(), cfg)
+// TunnelSpec describes one SSH loopback forward for a deployment. Both
+// sides stay on loopback; only Destroyed records release their local port.
+type TunnelSpec struct {
+	SSHHost        string
+	SSHPort        int
+	SSHUser        string
+	IdentityFile   string
+	KnownHostsFile string
+	LocalHost      string
+	LocalPort      int
+	RemoteHost     string
+	RemotePort     int
+	// AcceptNewHostKey pins the host key on first contact only (TOFU).
+	// Every later connection enforces the pinned key.
+	AcceptNewHostKey bool
 }
 
-func CommandContext(ctx context.Context, cfg config.Config) (*exec.Cmd, error) {
-	if err := requireReadableRegularFile("SSH identity file", cfg.SSH.IdentityFile); err != nil {
+// ForwardCommand builds the SSH process for one deployment forward.
+func ForwardCommand(ctx context.Context, spec TunnelSpec) (*exec.Cmd, error) {
+	if strings.TrimSpace(spec.SSHHost) == "" {
+		return nil, fmt.Errorf("SSH host is required")
+	}
+	if spec.SSHPort < 1 || spec.SSHPort > 65535 {
+		return nil, fmt.Errorf("SSH port must be between 1 and 65535")
+	}
+	if strings.TrimSpace(spec.SSHUser) == "" {
+		return nil, fmt.Errorf("SSH user is required")
+	}
+	if spec.LocalHost != "127.0.0.1" || spec.RemoteHost != "127.0.0.1" {
+		return nil, fmt.Errorf("tunnel must use loopback (127.0.0.1) on both sides")
+	}
+	if spec.LocalPort < 1 || spec.LocalPort > 65535 || spec.RemotePort < 1 || spec.RemotePort > 65535 {
+		return nil, fmt.Errorf("tunnel ports must be between 1 and 65535")
+	}
+	if err := requireReadableRegularFile("SSH identity file", spec.IdentityFile); err != nil {
 		return nil, err
 	}
-	if err := requireReadableRegularFile("SSH known hosts file", cfg.SSH.KnownHostsFile); err != nil {
+	if err := requireReadableRegularFile("SSH known hosts file", spec.KnownHostsFile); err != nil {
 		return nil, err
 	}
-
+	checking := "yes"
+	if spec.AcceptNewHostKey {
+		checking = "accept-new"
+	}
 	return exec.CommandContext(
 		ctx,
 		"ssh",
@@ -68,11 +99,25 @@ func CommandContext(ctx context.Context, cfg config.Config) (*exec.Cmd, error) {
 		"-o", "BatchMode=yes",
 		"-o", "ExitOnForwardFailure=yes",
 		"-o", "IdentitiesOnly=yes",
-		"-o", "StrictHostKeyChecking=yes",
-		"-o", sshkey.KnownHostsOption(cfg.SSH.KnownHostsFile),
-		"-i", cfg.SSH.IdentityFile,
-		"-L", "127.0.0.1:30000:127.0.0.1:30000",
-		"-p", strconv.Itoa(cfg.SSH.Port),
-		fmt.Sprintf("%s@%s", cfg.SSH.User, cfg.SSH.Host),
+		"-o", "StrictHostKeyChecking="+checking,
+		"-o", sshkey.KnownHostsOption(spec.KnownHostsFile),
+		"-i", spec.IdentityFile,
+		"-L", fmt.Sprintf("%s:%d:%s:%d", spec.LocalHost, spec.LocalPort, spec.RemoteHost, spec.RemotePort),
+		"-p", strconv.Itoa(spec.SSHPort),
+		fmt.Sprintf("%s@%s", spec.SSHUser, spec.SSHHost),
 	), nil
+}
+
+// Command creates the SSH process for cfg's fixed loopback forward.
+func Command(cfg config.Config) (*exec.Cmd, error) {
+	return CommandContext(context.Background(), cfg)
+}
+
+func CommandContext(ctx context.Context, cfg config.Config) (*exec.Cmd, error) {
+	return ForwardCommand(ctx, TunnelSpec{
+		SSHHost: cfg.SSH.Host, SSHPort: cfg.SSH.Port, SSHUser: cfg.SSH.User,
+		IdentityFile: cfg.SSH.IdentityFile, KnownHostsFile: cfg.SSH.KnownHostsFile,
+		LocalHost: cfg.Route.LocalHost, LocalPort: cfg.Route.LocalPort,
+		RemoteHost: cfg.Route.RemoteHost, RemotePort: cfg.Route.RemotePort,
+	})
 }

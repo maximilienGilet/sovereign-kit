@@ -337,3 +337,37 @@ func TestDeploymentPathHelpers(t *testing.T) {
 		t.Fatalf("known hosts path = %q", got)
 	}
 }
+
+func TestValidateAllowsRentingWithoutEndpoint(t *testing.T) {
+	renting := testDeployment("renting")
+	renting.State = Renting
+	renting.SSH.Host = ""
+	renting.SSH.Port = 0
+	store := Store{Version: 1, Settings: DefaultSettings()}
+	if err := store.Add(renting); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Validate(); err != nil {
+		t.Fatalf("renting without endpoint: %v", err)
+	}
+	serving := testDeployment("serving-no-host")
+	serving.SSH.Host = ""
+	servingStore := Store{Version: 1, Settings: DefaultSettings()}
+	if err := servingStore.Add(serving); err != nil {
+		t.Fatal(err)
+	}
+	if err := servingStore.Validate(); err == nil {
+		t.Fatal("expected endpoint error for serving record")
+	}
+	failed := testDeployment("failed-no-host")
+	failed.State = Failed
+	failed.SSH.Host = ""
+	failed.SSH.Port = 0
+	failedStore := Store{Version: 1, Settings: DefaultSettings()}
+	if err := failedStore.Add(failed); err != nil {
+		t.Fatal(err)
+	}
+	if err := failedStore.Validate(); err != nil {
+		t.Fatalf("failed without endpoint: %v", err)
+	}
+}

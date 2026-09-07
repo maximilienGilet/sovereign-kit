@@ -293,11 +293,16 @@ func (deployment Deployment) validate(settings Settings) error {
 	if deployment.Route.RemotePort != 30000 {
 		return fmt.Errorf("remote port must be 30000")
 	}
-	if strings.TrimSpace(deployment.SSH.Host) == "" {
-		return fmt.Errorf("SSH host is required")
-	}
-	if deployment.SSH.Port < 1 || deployment.SSH.Port > 65535 {
-		return fmt.Errorf("SSH port must be between 1 and 65535")
+	// A renting record may precede first contact, and a failed record may
+	// never have observed one: the endpoint lands with the first instance
+	// observation. Every other state requires it.
+	if deployment.State != Renting && deployment.State != Failed {
+		if strings.TrimSpace(deployment.SSH.Host) == "" {
+			return fmt.Errorf("SSH host is required")
+		}
+		if deployment.SSH.Port < 1 || deployment.SSH.Port > 65535 {
+			return fmt.Errorf("SSH port must be between 1 and 65535")
+		}
 	}
 	if strings.TrimSpace(deployment.SSH.User) == "" {
 		return fmt.Errorf("SSH user is required")

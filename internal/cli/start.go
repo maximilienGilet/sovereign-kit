@@ -123,6 +123,29 @@ func Connect(ctx context.Context, output io.Writer, configPath string, deps Star
 	if err := tunnel.Start(); err != nil {
 		return nil, err
 	}
+	endpoint := fmt.Sprintf("http://%s:%d", cfg.Route.LocalHost, cfg.Route.LocalPort)
+	return SuperviseTunnel(ctx, output, tunnel, endpoint, deps)
+}
+
+// SuperviseTunnel blocks until the endpoint answers through an already
+// started tunnel, then transfers tunnel ownership to the caller. On any
+// failure it stops the tunnel.
+func SuperviseTunnel(ctx context.Context, output io.Writer, tunnel Tunnel, endpoint string, deps StartDependencies) (Tunnel, error) {
+	if output == nil {
+		output = io.Discard
+	}
+	if deps.Clock == nil {
+		deps.Clock = setup.RealClock{}
+	}
+	if deps.PollInterval <= 0 {
+		deps.PollInterval = 5 * time.Second
+	}
+	if deps.PollTimeout <= 0 {
+		deps.PollTimeout = 30 * time.Minute
+	}
+	if deps.Healthcheck == nil {
+		deps.Healthcheck = route.Healthcheck
+	}
 	owned := false
 	defer func() {
 		if !owned {
@@ -130,7 +153,6 @@ func Connect(ctx context.Context, output io.Writer, configPath string, deps Star
 		}
 	}()
 
-	endpoint := fmt.Sprintf("http://%s:%d", cfg.Route.LocalHost, cfg.Route.LocalPort)
 	deadline := deps.Clock.Now().Add(deps.PollTimeout)
 	var lastHealthErr error
 	for {
