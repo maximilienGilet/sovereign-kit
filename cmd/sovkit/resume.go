@@ -115,12 +115,12 @@ func waitInstanceRunning(ctx context.Context, client *vast.Client, id int, timeo
 			return instance, nil
 		}
 		if strings.EqualFold(instance.Status, "exited") {
-			return vast.Instance{}, fmt.Errorf("instance %d exited; destroy and re-provision it", id)
+			return instance, fmt.Errorf("instance %d exited; destroy and re-provision it", id)
 		}
 		if instance.Status != last {
 			last = instance.Status
 			if progress != nil {
-				progress(fmt.Sprintf("instance %d is %s, waiting…", id, instance.Status))
+				progress(instance.Status)
 			}
 		}
 		if time.Now().After(deadline) {

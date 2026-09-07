@@ -215,7 +215,7 @@ func TestWaitReportsStatusChangesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(seen) != 1 || seen[0] != "instance 123456 is loading, waiting…" {
+	if len(seen) != 1 || seen[0] != "loading" {
 		t.Fatalf("progress = %q, want one loading change", seen)
 	}
 }
