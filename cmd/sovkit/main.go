@@ -29,7 +29,7 @@ func (err *doctorExitError) Error() string {
 func main() {
 	path, err := defaultConfigPath()
 	if err == nil {
-		err = runWith(os.Args[1:], os.Stdin, os.Stdout, path)
+		err = runWith(os.Args[1:], os.Stdout, path)
 	}
 	if err != nil {
 		var doctorExit *doctorExitError
@@ -46,10 +46,10 @@ func run(args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return runWith(args, os.Stdin, output, path)
+	return runWith(args, output, path)
 }
 
-func runWith(args []string, input io.Reader, output io.Writer, configPath string) error {
+func runWith(args []string, output io.Writer, configPath string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		_, err := fmt.Fprintln(output, `Usage: sovkit <command>
 

@@ -26,7 +26,7 @@ func TestRunHelpListsTheShimCommands(t *testing.T) {
 func TestBareArgsShowUsage(t *testing.T) {
 	for _, args := range [][]string{nil, {"--help"}, {"-h"}} {
 		var output bytes.Buffer
-		if err := runWith(args, strings.NewReader(""), &output, "missing"); err != nil {
+		if err := runWith(args, &output, "missing"); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(output.String(), "Usage:") {
