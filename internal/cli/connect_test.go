@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
-// Catch accidental ownership retention or dashboard execution by the connection service.
-func TestConnectTransfersHealthyTunnelWithoutDashboard(t *testing.T) {
+// Catch accidental ownership retention by the connection service.
+func TestConnectTransfersHealthyTunnel(t *testing.T) {
 	events := []string{}
 	tunnel := &startTestTunnel{events: &events, done: make(chan error, 1)}
-	deps := startTestDependencies(tunnel, &startTestClock{events: &events, now: time.Unix(0, 0)}, func(context.Context, string) error { return nil }, func(io.Writer) error { t.Fatal("Connect launched dashboard"); return nil })
+	deps := startTestDependencies(tunnel, &startTestClock{events: &events, now: time.Unix(0, 0)}, func(context.Context, string) error { return nil })
 	got, err := Connect(context.Background(), io.Discard, startTestConfig(t), deps)
 	if err != nil || got != tunnel || tunnel.stopCount != 0 {
 		t.Fatalf("tunnel=%v error=%v stops=%d", got, err, tunnel.stopCount)
@@ -35,7 +35,7 @@ func TestConnectStopsTunnelOnFailure(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			started := make(chan struct{})
-			deps := startTestDependencies(tunnel, &startTestClock{events: &events, now: time.Unix(0, 0)}, func(ctx context.Context, _ string) error { close(started); <-ctx.Done(); return ctx.Err() }, func(io.Writer) error { t.Fatal("dashboard ran"); return nil })
+			deps := startTestDependencies(tunnel, &startTestClock{events: &events, now: time.Unix(0, 0)}, func(ctx context.Context, _ string) error { close(started); <-ctx.Done(); return ctx.Err() })
 			if reason == "timeout" {
 				deps.PollTimeout = 10 * time.Millisecond
 			}

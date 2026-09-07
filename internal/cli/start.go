@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"sync"
 	"time"
 
-	"github.com/maximilienGilet/sovereign-kit/internal/clientprofile"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
 	"github.com/maximilienGilet/sovereign-kit/internal/route"
 	"github.com/maximilienGilet/sovereign-kit/internal/setup"
@@ -44,29 +42,11 @@ type Tunnel interface {
 }
 
 type StartDependencies struct {
-	PrepareConnection connectionPreparer
-	NewTunnel         func(context.Context, config.Config, io.Writer) (Tunnel, error)
-	Healthcheck       func(context.Context, string) error
-	RunDashboard      func(io.Writer) error
-	Discover          func(context.Context, string, clientprofile.Metadata) clientprofile.Endpoint
-	Clock             setup.Clock
-	PollInterval      time.Duration
-	PollTimeout       time.Duration
-}
-
-func Start(ctx context.Context, output io.Writer, configPath string, deps StartDependencies) error {
-	if deps.RunDashboard == nil {
-		return RunApplication(ctx, os.Stdin, output, configPath, "root", "start", ApplicationDependencies{Start: deps})
-	}
-	if output == nil {
-		output = io.Discard
-	}
-	tunnel, err := Connect(ctx, output, configPath, deps)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tunnel.Stop() }()
-	return deps.RunDashboard(output)
+	NewTunnel    func(context.Context, config.Config, io.Writer) (Tunnel, error)
+	Healthcheck  func(context.Context, string) error
+	Clock        setup.Clock
+	PollInterval time.Duration
+	PollTimeout  time.Duration
 }
 
 // StartHeadless owns only the local connection. Clients are launched explicitly
@@ -87,18 +67,9 @@ func StartHeadless(ctx context.Context, output io.Writer, configPath string, dep
 	if err != nil {
 		return err
 	}
-	discover := deps.Discover
-	if discover == nil {
-		discover = clientprofile.Discover
-	}
-	endpoint := discover(ctx, fmt.Sprintf("http://%s:%d/v1", cfg.Route.LocalHost, cfg.Route.LocalPort), clientprofile.Metadata{ID: cfg.Model.ID, ContextWindow: cfg.Model.ContextWindow, MaxTokens: cfg.Model.MaxTokens})
-	if _, err := fmt.Fprintf(output, "Base URL: %s\nModel: %s\n", endpoint.BaseURL, endpoint.ID); err != nil {
+	baseURL := fmt.Sprintf("http://%s:%d/v1", cfg.Route.LocalHost, cfg.Route.LocalPort)
+	if _, err := fmt.Fprintf(output, "Base URL: %s\nModel: %s\n", baseURL, cfg.Model.ID); err != nil {
 		return err
-	}
-	if endpoint.Problem != "" {
-		if _, err := fmt.Fprintln(output, endpoint.Problem); err != nil {
-			return err
-		}
 	}
 	if _, err := fmt.Fprintln(output, "Connection active. Launch your client explicitly in another terminal. Ctrl+C disconnects locally; remote instance billing may continue."); err != nil {
 		return err
@@ -267,11 +238,6 @@ func healthTimeoutError(timeout time.Duration, last error) error {
 		return fmt.Errorf("healthcheck timed out after %s", timeout)
 	}
 	return fmt.Errorf("healthcheck timed out after %s: %w", timeout, last)
-}
-
-func RunDashboard(input io.Reader, output io.Writer) error {
-	_, err := fmt.Fprintln(output, "Run sovkit start to open the connected endpoint dashboard. Integrations are optional and never launched automatically.")
-	return err
 }
 
 type commandTunnel struct {

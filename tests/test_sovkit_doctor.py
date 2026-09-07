@@ -109,8 +109,10 @@ class SovkitDoctorTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("setup", result.stdout)
-        self.assertIn("dashboard", result.stdout)
+        self.assertIn("start", result.stdout)
+        self.assertIn("tunnel", result.stdout)
+        self.assertIn("doctor", result.stdout)
+        self.assertNotIn("dashboard", result.stdout)
 
     def test_server_recipe_uses_a_digest_locked_image(self) -> None:
         image = (REPO / "server/image.lock").read_text().strip()

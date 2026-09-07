@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/maximilienGilet/sovereign-kit/internal/recipe"
 	"github.com/maximilienGilet/sovereign-kit/internal/setup"
 	"github.com/maximilienGilet/sovereign-kit/internal/vast"
 )
@@ -106,7 +107,7 @@ func capacityBar(label string, available float64, required int, unit string, wid
 	bar[marker] = '│'
 	maximum := formatMetricNumber(scale) + " GB"
 	ruler := "0" + strings.Repeat(" ", max(1, w-1-ansi.StringWidth(maximum))) + maximum
-	return fmt.Sprintf("%s %s %s · %d GB required\n%s\n%s\n│ recipe requirement", label, formatMetricNumber(available), unit, required, rentalAccent.Render(string(bar)), ruler)
+	return fmt.Sprintf("%s %s %s · %d GB required\n%s\n%s\n│ recipe requirement", label, formatMetricNumber(available), unit, required, string(bar), ruler)
 }
 
 func offerFacts(view setup.OfferView, width int, progress float64) string {
@@ -119,7 +120,7 @@ func offerFacts(view setup.OfferView, width int, progress float64) string {
 	lines := []string{
 		fmt.Sprintf("%s× %s", providerInt(o.GPUCount), cleanOfferText(unknownProviderValue(o.GPUName))),
 		offerCountry(o),
-		rentalWarning.Bold(true).Render(offerPrice(o)),
+		offerPrice(o),
 		monthly,
 		"Excludes storage, egress and tax.",
 		offerCompatibility(view),
@@ -150,4 +151,96 @@ func offerCompatibility(view setup.OfferView) string {
 		match = "matches"
 	}
 	return fmt.Sprintf("GPU %s: %d× %s · %s", policy, r.GPUCount, cleanOfferText(r.GPUModel), match)
+}
+func formatGroupedFixed(value float64, precision int) string {
+	raw := strconv.FormatFloat(value, 'f', precision, 64)
+	parts := strings.SplitN(raw, ".", 2)
+	digits := parts[0]
+	sign := ""
+	if strings.HasPrefix(digits, "-") {
+		sign = "-"
+		digits = strings.TrimPrefix(digits, "-")
+	}
+	var grouped strings.Builder
+	grouped.WriteString(sign)
+	for index, digit := range digits {
+		if index > 0 && (len(digits)-index)%3 == 0 {
+			grouped.WriteByte(',')
+		}
+		grouped.WriteRune(digit)
+	}
+	if len(parts) == 2 {
+		grouped.WriteByte('.')
+		grouped.WriteString(parts[1])
+	}
+	return grouped.String()
+}
+
+func providerInt(value int) string {
+	if value <= 0 {
+		return "unknown/unmeasured"
+	}
+	return strconv.Itoa(value)
+}
+
+func unknownProviderValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "unknown/unmeasured"
+	}
+	return value
+}
+
+func speculativeDisplayName(algorithm string) string {
+	if algorithm == "qwen3_5_mtp" {
+		return "MTP"
+	}
+	return algorithm
+}
+
+func runtimeSummary(selectedRecipe recipe.Recipe) string {
+	parts := []string{unknownProviderValue(selectedRecipe.Runtime.Engine)}
+	if selectedRecipe.Runtime.Quantization != "" {
+		parts = append(parts, selectedRecipe.Runtime.Quantization)
+	}
+	if selectedRecipe.Runtime.KVCacheDType != "" {
+		parts = append(parts, selectedRecipe.Runtime.KVCacheDType)
+	}
+	if selectedRecipe.Speculative != nil && selectedRecipe.Speculative.Algorithm != "" {
+		speculative := speculativeDisplayName(selectedRecipe.Speculative.Algorithm)
+		if selectedRecipe.Speculative.NumDraftTokens > 0 {
+			speculative += fmt.Sprintf(" ×%d", selectedRecipe.Speculative.NumDraftTokens)
+		}
+		parts = append(parts, speculative)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func runtimeControls(runtime recipe.Runtime) string {
+	parts := make([]string, 0, 2)
+	if runtime.GPUMemoryUtilization > 0 {
+		parts = append(parts, fmt.Sprintf("GPU memory: %.0f%%", runtime.GPUMemoryUtilization*100))
+	}
+	if runtime.DisableAsyncScheduling {
+		parts = append(parts, "async scheduling disabled")
+	}
+	return strings.Join(parts, " · ")
+}
+
+func formatMetricNumber(value float64) string {
+	precision := 0
+	if math.Abs(value-math.Round(value)) > 0.000001 {
+		precision = 1
+	}
+	return formatGroupedFixed(value, precision)
+}
+
+func providerFloat(value float64, suffix string) string {
+	if value <= 0 {
+		return "unknown/unmeasured"
+	}
+	formatted := formatMetricNumber(value)
+	if suffix == "" {
+		return formatted
+	}
+	return formatted + " " + suffix
 }

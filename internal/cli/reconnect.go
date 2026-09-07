@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
-	"github.com/maximilienGilet/sovereign-kit/internal/setup"
 	"github.com/maximilienGilet/sovereign-kit/internal/vast"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -115,67 +113,4 @@ func prepareReconnect(ctx context.Context, cfg config.Config, api reconnectAPI, 
 		return restore(ctx, cfg)
 	}
 	return cfg, nil
-}
-
-func (m *applicationModel) reconnectPreparer() connectionPreparer {
-	if m.deps.Start.PrepareConnection != nil {
-		return m.deps.Start.PrepareConnection
-	}
-	token := m.readAvailableVastToken()
-	m.rememberSecret(token)
-	path := m.path
-	return func(ctx context.Context, cfg config.Config, confirm reconnectConfirmation, progress func(string)) (config.Config, error) {
-		if cfg.Provider.Kind != "vast" {
-			return cfg, nil
-		}
-		if token == "" {
-			return cfg, fmt.Errorf("Vast API key required to check instance state before reconnecting")
-		}
-		original := cfg
-		check := func() error {
-			current, err := config.Load(path)
-			if err != nil {
-				return err
-			}
-			if !reflect.DeepEqual(current, original) {
-				return fmt.Errorf("saved configuration changed; reconnect again")
-			}
-			return nil
-		}
-		guardedConfirm := func(ctx context.Context, id int) (bool, error) {
-			ok, err := confirm(ctx, id)
-			if err == nil && ok {
-				err = check()
-				if err == nil {
-					pending := original
-					pending.RestartPending = true
-					err = config.Save(path, pending)
-					if err == nil {
-						original = pending
-					}
-				}
-			}
-			return ok, err
-		}
-		restored, err := prepareReconnect(ctx, cfg, vast.NewClient("https://console.vast.ai", token), guardedConfirm, progress, setup.RestartSavedServer, 5*time.Second)
-		if err != nil {
-			return cfg, err
-		}
-		if err := check(); err != nil {
-			return cfg, err
-		}
-		if restored.SSH != original.SSH {
-			if err := setup.RefreshSavedHostTrust(ctx, original.SSH, restored.SSH); err != nil {
-				return cfg, err
-			}
-		}
-		if err := ctx.Err(); err != nil {
-			return cfg, err
-		}
-		restored.RestartPending = false
-		if err := config.Save(path, restored); err != nil {
-			return cfg, err
-		}
-		return restored, nil
-	}
 }

@@ -5,10 +5,33 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/maximilienGilet/sovereign-kit/internal/recipe"
+	"github.com/maximilienGilet/sovereign-kit/internal/setup"
+	"github.com/maximilienGilet/sovereign-kit/internal/vast"
 )
 
+func offerFactsFixture() setup.OfferView {
+	return setup.OfferView{
+		Offer: vast.Offer{
+			ID: 42, MachineID: 88, GPUName: "RTX PRO 6000 S", GPUCount: 1, GPUVRAMGB: 97.9, TotalGPUVRAMGB: 97.9,
+			CPUCores: 48, CPURAMGB: 257.75, DiskSpaceGB: 1251.32500000000005, InetDownMBps: 7494.8, InetUpMBps: 5233,
+			DriverVersion: "570.86.15", HourlyUSD: 1.5037, Location: "Maryland, US", Reliability: 0.999,
+		},
+		Recipe: recipe.Recipe{
+			Name: "Qwen Studio", Kind: "text-generation",
+			Profile:      recipe.Profile{Status: "reference", Summary: "Long-context private Qwen route", Evidence: "Historical synthetic evidence"},
+			Runtime:      recipe.Runtime{Engine: "sglang", Image: "lmsysorg/sglang@sha256:e21dd539b36ea7842101393ec3fe3b0d453626cd8251e4d4db33af0cd97d7f0b"},
+			Model:        recipe.Model{Repository: "RadixArk/Qwen3.8-27B-NVFP4", Revision: "319f741cce68d7914884900c138a1fbb70a42f30"},
+			Serve:        recipe.Serve{ContextWindow: 262144, MaxOutputTokens: 16384, MaxRunningRequests: 5},
+			Requirements: recipe.Requirements{GPUModel: "RTX PRO 6000 S", GPUCount: 1, StrictGPU: true, MinimumVRAMGB: 96, MinimumDiskGB: 120},
+		},
+		MonthlyUSD: 1097.70,
+		AnnualUSD:  13172.41,
+	}
+}
+
 func TestOfferFactsShowPerGPUCapacityAndUnknowns(t *testing.T) {
-	view := rentalReviewFixture()
+	view := offerFactsFixture()
 	view.Offer.GPUCount = 2
 	view.Offer.GPUVRAMGB = 48
 	view.Offer.TotalGPUVRAMGB = 96
@@ -37,18 +60,8 @@ func TestOfferCapacityUsesDeclaredScaleAndRequirementMarker(t *testing.T) {
 	}
 }
 
-func TestRentalReviewUnknownPriceAndReliabilityNeverInventValues(t *testing.T) {
-	view := rentalReviewFixture()
-	view.Offer.PriceUnknown = true
-	view.Offer.ReliabilityUnknown = true
-	summary := newRentalReview(view, 120).accessibleSummary()
-	if !strings.Contains(summary, "Price unknown") || !strings.Contains(summary, "Reliability unknown") || strings.Contains(summary, "$1.50") || strings.Contains(summary, "99.9%") {
-		t.Fatalf("unknown data treated as measured: %s", summary)
-	}
-}
-
 func TestOfferPriceRetainsNonCentPrecisionAndRulerEndpointsAlign(t *testing.T) {
-	view := rentalReviewFixture()
+	view := offerFactsFixture()
 	if got := offerPrice(view.Offer); got != "$1.5037/h" {
 		t.Errorf("rounded provider quote: %s", got)
 	}

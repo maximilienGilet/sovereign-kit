@@ -10,7 +10,7 @@ import (
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
 )
 
-func TestStartHeadlessKeepsTunnelUntilCancellationWithoutDashboard(t *testing.T) {
+func TestStartHeadlessKeepsTunnelUntilCancellation(t *testing.T) {
 	path := t.TempDir() + "/config.toml"
 	if err := config.Save(path, config.Studio("gpu", 22, "alice", "/key", "/known")); err != nil {
 		t.Fatal(err)
@@ -23,9 +23,8 @@ func TestStartHeadlessKeepsTunnelUntilCancellationWithoutDashboard(t *testing.T)
 	ready := make(chan struct{})
 	go func() {
 		done <- StartHeadless(ctx, &output, path, StartDependencies{
-			NewTunnel:    func(context.Context, config.Config, io.Writer) (Tunnel, error) { return tunnel, nil },
-			Healthcheck:  func(context.Context, string) error { close(ready); return nil },
-			RunDashboard: func(io.Writer) error { t.Error("headless start opened dashboard"); return nil },
+			NewTunnel:   func(context.Context, config.Config, io.Writer) (Tunnel, error) { return tunnel, nil },
+			Healthcheck: func(context.Context, string) error { close(ready); return nil },
 		})
 	}()
 	select {

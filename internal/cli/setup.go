@@ -44,6 +44,8 @@ type WorkloadPrompter interface {
 	ConfirmCustomWorkload(context.Context, huggingface.Model, CustomHardware) (bool, error)
 }
 
+const customHuggingFaceWorkload = "huggingface"
+
 func resolveVastWorkload(
 	ctx context.Context,
 	prompter WorkloadPrompter,
@@ -176,23 +178,10 @@ func Setup(ctx context.Context, input io.Reader, output io.Writer, configPath, d
 		output = os.Stdout
 	}
 	if deps.Prompter == nil {
-		if UseTerminalApplication(input, output, deps.Getenv) {
-			deps.Prompter = NewHuhPrompter(input, output)
-		} else {
-			deps.Prompter = NewAccessiblePrompter(input, output)
-		}
+		return fmt.Errorf("setup prompter is required")
 	}
 	if deps.HomeDir == nil {
 		deps.HomeDir = os.UserHomeDir
-	}
-	if accessible, ok := deps.Prompter.(*AccessiblePrompter); ok {
-		accessible.recovery = setup.InstanceRecovery{}
-	}
-	if _, err := setup.ReadCheckpoint(setup.CheckpointPath(configPath)); !os.IsNotExist(err) {
-		if err != nil {
-			return fmt.Errorf("cannot read pending deployment: %w", err)
-		}
-		return ResumeSetup(ctx, output, configPath, deps, 0, false)
 	}
 	fmt.Fprintln(output, "Sovereign Kit setup")
 	provider, err := deps.Prompter.SelectProvider(ctx)
@@ -270,9 +259,6 @@ func setupVast(ctx context.Context, output io.Writer, deps SetupDependencies) er
 	}
 	result, err := deps.RunVast(ctx, token, identity, workload, operator)
 	if err != nil {
-		if accessible, ok := deps.Prompter.(*AccessiblePrompter); ok {
-			return accessible.recoverSetup(ctx, err, token)
-		}
 		return &redactedSetupError{cause: err, token: token}
 	}
 	fmt.Fprintf(output, "Vast instance %d created.\n", result.InstanceID)
