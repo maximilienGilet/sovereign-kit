@@ -67,7 +67,9 @@ func runResume(args []string, input io.Reader, output io.Writer, configPath stri
 				return err
 			}
 		}
-		if instance, err = waitInstanceRunning(ctx, client, deployment.Instance.ID, 5*time.Minute); err != nil {
+		if instance, err = waitInstanceRunning(ctx, client, deployment.Instance.ID, 5*time.Minute, func(status string) {
+			fmt.Fprintf(output, "Instance %d: %s…\n", deployment.Instance.ID, status)
+		}); err != nil {
 			return err
 		}
 	}
@@ -95,9 +97,15 @@ func runResume(args []string, input io.Reader, output io.Writer, configPath stri
 }
 
 // waitInstanceRunning polls until the instance runs. Exited instances fail
-// fast: restarting a broken container needs an operator decision.
-func waitInstanceRunning(ctx context.Context, client *vast.Client, id int, timeout time.Duration) (vast.Instance, error) {
+// fast: reviving a broken container needs an operator decision. Status
+// changes are reported through progress so long waits stay visible.
+//
+// waitPollInterval spaces readiness polls. Overridable in tests.
+var waitPollInterval = 5 * time.Second
+
+func waitInstanceRunning(ctx context.Context, client *vast.Client, id int, timeout time.Duration, progress func(string)) (vast.Instance, error) {
 	deadline := time.Now().Add(timeout)
+	last := ""
 	for {
 		instance, err := client.GetInstance(ctx, id)
 		if err != nil {
@@ -107,7 +115,13 @@ func waitInstanceRunning(ctx context.Context, client *vast.Client, id int, timeo
 			return instance, nil
 		}
 		if strings.EqualFold(instance.Status, "exited") {
-			return instance, fmt.Errorf("instance %d exited; destroy and re-provision it", id)
+			return vast.Instance{}, fmt.Errorf("instance %d exited; destroy and re-provision it", id)
+		}
+		if instance.Status != last {
+			last = instance.Status
+			if progress != nil {
+				progress(fmt.Sprintf("instance %d is %s, waiting…", id, instance.Status))
+			}
 		}
 		if time.Now().After(deadline) {
 			return instance, fmt.Errorf("instance %d not running after %s (status %q)", id, timeout, instance.Status)
@@ -115,7 +129,7 @@ func waitInstanceRunning(ctx context.Context, client *vast.Client, id int, timeo
 		select {
 		case <-ctx.Done():
 			return vast.Instance{}, ctx.Err()
-		case <-time.After(5 * time.Second):
+		case <-time.After(waitPollInterval):
 		}
 	}
 }

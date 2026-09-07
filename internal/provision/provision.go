@@ -66,6 +66,7 @@ type Inputs struct {
 	DeploymentID  string
 	VerifyHostKey bool
 	ReadyTimeout  time.Duration
+	ScanTimeout   time.Duration
 }
 
 // Deps carries the provision seams. Fakes in tests, setup primitives live.
@@ -152,7 +153,7 @@ func Provision(ctx context.Context, store *state.Store, dir string, inputs Input
 		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
 	progress("Instance ready, pinning host keys…")
-	keys, err := deps.Scanner.Scan(ctx, instance.SSHHost, instance.SSHPort)
+	keys, err := scanHostKeys(ctx, deps, progress, instance.SSHHost, instance.SSHPort, inputs.ScanTimeout)
 	if err != nil {
 		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
@@ -216,6 +217,26 @@ func waitRunning(ctx context.Context, deps Deps, vastAPI VastAPI, id int, timeou
 		}
 		if err := deps.Clock.Sleep(ctx, 5*time.Second); err != nil {
 			return vast.Instance{}, err
+		}
+	}
+}
+
+// scanHostKeys retries first contact until the host answers or the budget
+// runs out. One attempt cannot tell a booting sshd from a dead route;
+// destroying on the first failure would kill healthy instances.
+func scanHostKeys(ctx context.Context, deps Deps, progress func(string), host string, port int, timeout time.Duration) (setup.HostKeys, error) {
+	deadline := deps.Clock.Now().Add(timeout)
+	for {
+		keys, err := deps.Scanner.Scan(ctx, host, port)
+		if err == nil {
+			return keys, nil
+		}
+		if !deps.Clock.Now().Before(deadline) {
+			return setup.HostKeys{}, fmt.Errorf("scan host keys: %w (no answer after %s)", err, timeout)
+		}
+		progress("SSH not ready yet, retrying…")
+		if err := deps.Clock.Sleep(ctx, 10*time.Second); err != nil {
+			return setup.HostKeys{}, err
 		}
 	}
 }

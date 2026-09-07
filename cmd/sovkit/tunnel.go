@@ -67,8 +67,9 @@ func requireNoLiveDeployment(store state.Store) error {
 	return nil
 }
 
-// isTerminalFile reports whether f is a character device (a terminal).
-func isTerminalFile(file *os.File) bool {
+// isCharDevice reports whether f is a character device. Callers use it as
+// a terminal approximation: every terminal is one, but so is /dev/null.
+func isCharDevice(file *os.File) bool {
 	info, err := file.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
@@ -77,7 +78,7 @@ func isTerminalFile(file *os.File) bool {
 // in tests; production checks for a character device.
 var stdinInteractive = func(input io.Reader) bool {
 	file, ok := input.(*os.File)
-	return ok && isTerminalFile(file)
+	return ok && isCharDevice(file)
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -100,7 +101,7 @@ func newSpinner(out io.Writer, message string) *spinner {
 		out: out, message: message,
 		stop: make(chan struct{}), done: make(chan struct{}),
 	}
-	if file, ok := out.(*os.File); ok && isTerminalFile(file) {
+	if file, ok := out.(*os.File); ok && isCharDevice(file) {
 		spin.animate = true
 		go spin.spin()
 	}
@@ -133,9 +134,8 @@ func (spin *spinner) spin() {
 		case <-ticker.C:
 			spin.mu.Lock()
 			spin.frame++
-			text := "\r" + spinnerFrames[spin.frame%len(spinnerFrames)] + " " + spin.message
 			spin.mu.Unlock()
-			fmt.Fprint(spin.out, text)
+			fmt.Fprint(spin.out, spin.render())
 		}
 	}
 }

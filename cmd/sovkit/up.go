@@ -191,7 +191,7 @@ func runUp(args []string, input io.Reader, output io.Writer, configPath string) 
 	deployment, err := provisionPrepare(sigCtx, &store, dir, provision.Inputs{
 		Recipe: resolved, Offer: chosen.Offer, CapUSD: query.CapUSD,
 		Port: port, DeploymentID: store.NextID(resolved.ID, time.Now()),
-		VerifyHostKey: *verifyHostKey, ReadyTimeout: 10 * time.Minute,
+		VerifyHostKey: *verifyHostKey, ReadyTimeout: 10 * time.Minute, ScanTimeout: 3 * time.Minute,
 	}, deps)
 	if err != nil {
 		spin.Stop("Provisioning failed")

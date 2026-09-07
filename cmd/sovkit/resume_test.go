@@ -180,24 +180,42 @@ func statusClient(t *testing.T, statuses []string, calls *int) *vast.Client {
 func TestWaitInstanceRunningDirect(t *testing.T) {
 	calls := 0
 	client := statusClient(t, []string{"running"}, &calls)
-	if _, err := waitInstanceRunning(context.Background(), client, 123456, time.Minute); err != nil {
+	if _, err := waitInstanceRunning(context.Background(), client, 123456, time.Minute, nil); err != nil {
 		t.Fatalf("immediate running: %v", err)
 	}
 	calls = 0
 	client = statusClient(t, []string{"exited"}, &calls)
-	if _, err := waitInstanceRunning(context.Background(), client, 123456, time.Minute); err == nil {
+	if _, err := waitInstanceRunning(context.Background(), client, 123456, time.Minute, nil); err == nil {
 		t.Fatal("expected exited failure")
 	}
 	calls = 0
 	client = statusClient(t, []string{"loading"}, &calls)
-	if _, err := waitInstanceRunning(context.Background(), client, 123456, time.Nanosecond); err == nil {
+	if _, err := waitInstanceRunning(context.Background(), client, 123456, time.Nanosecond, nil); err == nil {
 		t.Fatal("expected timeout failure")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	calls = 0
 	client = statusClient(t, []string{"loading"}, &calls)
-	if _, err := waitInstanceRunning(ctx, client, 123456, time.Hour); err == nil {
+	if _, err := waitInstanceRunning(ctx, client, 123456, time.Hour, nil); err == nil {
 		t.Fatal("expected cancellation failure")
+	}
+}
+
+func TestWaitReportsStatusChangesOnly(t *testing.T) {
+	previous := waitPollInterval
+	waitPollInterval = time.Millisecond
+	t.Cleanup(func() { waitPollInterval = previous })
+	calls := 0
+	client := statusClient(t, []string{"loading", "loading", "running"}, &calls)
+	var seen []string
+	_, err := waitInstanceRunning(context.Background(), client, 123456, time.Minute, func(status string) {
+		seen = append(seen, status)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 || seen[0] != "instance 123456 is loading, waiting…" {
+		t.Fatalf("progress = %q, want one loading change", seen)
 	}
 }

@@ -84,9 +84,19 @@ type fakeScanner struct {
 	raw          string
 	fingerprints []string
 	fail         error
+	failures     int
+	calls        int
 }
 
 func (fake *fakeScanner) Scan(context.Context, string, int) (setup.HostKeys, error) {
+	fake.calls++
+	if fake.failures > 0 {
+		fake.failures--
+		if fake.fail != nil {
+			return setup.HostKeys{}, fake.fail
+		}
+		return setup.HostKeys{}, errors.New("ssh-keyscan failed: exit status 1")
+	}
 	if fake.fail != nil {
 		return setup.HostKeys{}, fake.fail
 	}
@@ -181,8 +191,8 @@ func testDeps(vastAPI *fakeVast) (*fakeIdentity, *fakeScanner, *fakeTrust, *fake
 func testInputs() Inputs {
 	return Inputs{
 		Recipe: testRecipe(), Offer: testOffer(),
-		CapUSD: 5, Port: 30000, DeploymentID: "qwen-solo-20260907t1432",
-		ReadyTimeout: time.Minute,
+		CapUSD: 5, Port: 30000, DeploymentID: "qwen-solo-rtx5090-20260907t1432",
+		ReadyTimeout: time.Minute, ScanTimeout: time.Minute,
 	}
 }
 
@@ -364,6 +374,45 @@ func TestProvisionTimeoutDestroysOrphan(t *testing.T) {
 	_, err := Provision(context.Background(), store, dir, inputs, deps)
 	if err == nil || !strings.Contains(err.Error(), "may still bill") && len(vastAPI.destroyed) != 1 {
 		t.Fatalf("expected orphan destroy, got %v %+v", err, vastAPI.destroyed)
+	}
+	_, persisted := loadOne(t, dir, inputs.DeploymentID)
+	if persisted.State != state.Failed {
+		t.Fatalf("state = %q, want failed", persisted.State)
+	}
+}
+
+func TestProvisionRetriesFirstContact(t *testing.T) {
+	dir := state.Dir(t.TempDir())
+	vastAPI := &fakeVast{}
+	_, scanner, _, _, _, deps := testDeps(vastAPI)
+	scanner.failures = 2
+	store := &state.Store{Version: 1, Settings: state.DefaultSettings()}
+	deployment, err := Provision(context.Background(), store, dir, testInputs(), deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scanner.calls != 3 {
+		t.Fatalf("scan attempts = %d, want 3", scanner.calls)
+	}
+	if deployment.State != state.Preparing {
+		t.Fatalf("state = %q", deployment.State)
+	}
+}
+
+func TestProvisionExhaustsScanBudgetThenDestroys(t *testing.T) {
+	dir := state.Dir(t.TempDir())
+	vastAPI := &fakeVast{}
+	_, scanner, _, _, _, deps := testDeps(vastAPI)
+	scanner.failures = 1000
+	inputs := testInputs()
+	inputs.ScanTimeout = time.Nanosecond
+	store := &state.Store{Version: 1, Settings: state.DefaultSettings()}
+	_, err := Provision(context.Background(), store, dir, inputs, deps)
+	if err == nil || !strings.Contains(err.Error(), "no answer after") {
+		t.Fatalf("expected scan budget error, got %v", err)
+	}
+	if len(vastAPI.destroyed) != 1 {
+		t.Fatalf("destroyed = %+v", vastAPI.destroyed)
 	}
 	_, persisted := loadOne(t, dir, inputs.DeploymentID)
 	if persisted.State != state.Failed {

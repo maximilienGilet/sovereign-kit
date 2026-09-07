@@ -34,14 +34,14 @@ func TestSpinnerRendersFrameAndMessage(t *testing.T) {
 	}
 }
 
-func TestIsTerminalFileDetectsCharacterDevices(t *testing.T) {
+func TestIsCharDeviceDetectsCharacterDevices(t *testing.T) {
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reader.Close()
 	defer writer.Close()
-	if isTerminalFile(writer) {
+	if isCharDevice(writer) {
 		t.Fatal("pipe must not count as terminal")
 	}
 	null, err := os.Open("/dev/null")
@@ -49,7 +49,7 @@ func TestIsTerminalFileDetectsCharacterDevices(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer null.Close()
-	if !isTerminalFile(null) {
+	if !isCharDevice(null) {
 		t.Fatal("/dev/null must count as terminal")
 	}
 }
