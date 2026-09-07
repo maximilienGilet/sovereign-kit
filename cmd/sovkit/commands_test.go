@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maximilienGilet/sovereign-kit/internal/planner"
 	"github.com/maximilienGilet/sovereign-kit/internal/state"
 	"github.com/maximilienGilet/sovereign-kit/internal/vast"
 )
@@ -253,6 +254,23 @@ func TestOffersListsRankedTable(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestOfferTableAlignsColumnsDespiteSpacesInCells(t *testing.T) {
+	recs := []planner.Recommendation{
+		{Offer: vast.Offer{ID: 7, GPUName: "RTX 5090", GPUCount: 1, HourlyUSD: 0.42, Location: "France, FR"}, MonthlyUSD: 307},
+		{Offer: vast.Offer{ID: 8, GPUName: "RTX PRO 6000 S", GPUCount: 2, HourlyUSD: 1.25, Location: "France, FR"}, MonthlyUSD: 913},
+	}
+	var output bytes.Buffer
+	printOfferTable(&output, recs)
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected header + 2 rows, got %q", output.String())
+	}
+	first, second := strings.Index(lines[1], "France"), strings.Index(lines[2], "France")
+	if first < 0 || first != second {
+		t.Fatalf("LOCATION column misaligned:\n%s", output.String())
 	}
 }
 

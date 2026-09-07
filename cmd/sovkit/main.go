@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/maximilienGilet/sovereign-kit/internal/config"
@@ -302,9 +303,11 @@ func runOfferQuery(ctx context.Context, token string, query offerQuery) ([]plann
 	return planner.Recommend(query.Recipe, filterOffersByCap(offers, query.CapUSD), monthlyHours), nil
 }
 
-// printOfferTable renders ranked recommendations for choosing.
+// printOfferTable renders ranked recommendations for choosing, columns
+// aligned even when cells contain spaces (GPU names, locations).
 func printOfferTable(output io.Writer, recommendations []planner.Recommendation) {
-	fmt.Fprintln(output, "#  ID  $/H  $/MO  GPU  LOCATION  DOWN/UP  REL  DRIVER")
+	writer := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "#\tID\t$/H\t$/MO\tGPU\tLOCATION\tDOWN/UP\tREL\tDRIVER")
 	for index, recommendation := range recommendations {
 		offer := recommendation.Offer
 		price, monthly := "unknown", "unknown"
@@ -316,10 +319,11 @@ func printOfferTable(output io.Writer, recommendations []planner.Recommendation)
 		if !offer.ReliabilityUnknown {
 			reliability = fmt.Sprintf("%.1f%%", offer.Reliability*100)
 		}
-		fmt.Fprintf(output, "%d  %d  %s  %s  %d× %s  %s  %.0f/%.0f  %s  %s\n",
+		fmt.Fprintf(writer, "%d\t%d\t%s\t%s\t%d× %s\t%s\t%.0f/%.0f\t%s\t%s\n",
 			index+1, offer.ID, price, monthly, offer.GPUCount, offer.GPUName,
 			offer.Location, offer.InetDownMBps, offer.InetUpMBps, reliability, offer.DriverVersion)
 	}
+	_ = writer.Flush()
 }
 
 func runOffers(args []string, input io.Reader, output io.Writer, configPath string) error {
