@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"path/filepath"
 	"time"
 
 	"github.com/maximilienGilet/sovereign-kit/internal/state"
@@ -19,16 +18,11 @@ func runDown(args []string, input io.Reader, output io.Writer, configPath string
 	if err != nil || len(positionals) > 1 {
 		return usageErrorf("usage: sovkit down [id]")
 	}
-	dir := filepath.Dir(configPath)
-	store, err := state.Load(dir)
-	if err != nil {
-		return err
-	}
 	id := ""
 	if len(positionals) == 1 {
 		id = positionals[0]
 	}
-	deployment, err := resolveDeployment(dir, store, id)
+	dir, store, deployment, err := resolveTarget(configPath, id)
 	if err != nil {
 		return err
 	}

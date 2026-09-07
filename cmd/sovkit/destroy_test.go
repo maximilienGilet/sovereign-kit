@@ -180,3 +180,49 @@ func TestDestroyRefusesAlreadyDestroyed(t *testing.T) {
 		t.Fatalf("hits = %+v", hits)
 	}
 }
+
+func TestDestroySucceedsWhenKeyAlreadyAbsent(t *testing.T) {
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "web-one", state.Serving)
+	fakeVast(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v0/instances/123456"):
+			_, _ = w.Write([]byte(`{"instances":{"id":123456}}`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/v0/instances/123456":
+			_, _ = w.Write([]byte(`{"success":true}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v0/ssh/":
+			_, _ = w.Write([]byte(`[{"id":9,"key":"ssh-ed25519 QkJCQg== other"}]`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	var output bytes.Buffer
+	if err := runWith([]string{"destroy", "--yes"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatalf("already-clean keys must succeed, got %v", err)
+	}
+	if text := output.String(); !strings.Contains(text, "already absent") {
+		t.Fatalf("missing clean note:\n%s", text)
+	}
+	if deployment := loadDeployment(t, dir, "web-one"); deployment.State != state.Destroyed {
+		t.Fatalf("state = %q", deployment.State)
+	}
+}
+
+func TestDestroyFailsWhenIdentityGone(t *testing.T) {
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "web-one", state.Serving)
+	sdir := state.Dir(dir)
+	if err := os.Remove(state.IdentityPath(sdir, "web-one") + ".pub"); err != nil {
+		t.Fatal(err)
+	}
+	hits := &vastHits{}
+	destroyFake(t, hits, true, true, true)
+	var output bytes.Buffer
+	err := runWith([]string{"destroy", "--yes"}, strings.NewReader(""), &output, filepath.Join(sdir, "config.toml"))
+	if err == nil || !strings.Contains(err.Error(), "cannot verify key cleanup") {
+		t.Fatalf("expected unverifiable-hygiene error, got %v", err)
+	}
+	if deployment := loadDeployment(t, dir, "web-one"); deployment.State != state.Destroyed {
+		t.Fatalf("state = %q, want destroyed despite hygiene error", deployment.State)
+	}
+}

@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -24,16 +23,11 @@ func runLogs(args []string, input io.Reader, output io.Writer, configPath string
 	if err != nil || len(positionals) > 1 {
 		return usageErrorf("usage: sovkit logs [id] [--follow]")
 	}
-	dir := filepath.Dir(configPath)
-	store, err := state.Load(dir)
-	if err != nil {
-		return err
-	}
 	id := ""
 	if len(positionals) == 1 {
 		id = positionals[0]
 	}
-	deployment, err := resolveDeployment(dir, store, id)
+	dir, _, deployment, err := resolveTarget(configPath, id)
 	if err != nil {
 		return err
 	}

@@ -60,9 +60,6 @@ type TunnelSpec struct {
 	LocalPort      int
 	RemoteHost     string
 	RemotePort     int
-	// AcceptNewHostKey pins the host key on first contact only (TOFU).
-	// Every later connection enforces the pinned key.
-	AcceptNewHostKey bool
 }
 
 // ForwardCommand builds the SSH process for one deployment forward.
@@ -88,10 +85,6 @@ func ForwardCommand(ctx context.Context, spec TunnelSpec) (*exec.Cmd, error) {
 	if err := requireReadableRegularFile("SSH known hosts file", spec.KnownHostsFile); err != nil {
 		return nil, err
 	}
-	checking := "yes"
-	if spec.AcceptNewHostKey {
-		checking = "accept-new"
-	}
 	return exec.CommandContext(
 		ctx,
 		"ssh",
@@ -99,7 +92,7 @@ func ForwardCommand(ctx context.Context, spec TunnelSpec) (*exec.Cmd, error) {
 		"-o", "BatchMode=yes",
 		"-o", "ExitOnForwardFailure=yes",
 		"-o", "IdentitiesOnly=yes",
-		"-o", "StrictHostKeyChecking="+checking,
+		"-o", "StrictHostKeyChecking=yes",
 		"-o", sshkey.KnownHostsOption(spec.KnownHostsFile),
 		"-i", spec.IdentityFile,
 		"-L", fmt.Sprintf("%s:%d:%s:%d", spec.LocalHost, spec.LocalPort, spec.RemoteHost, spec.RemotePort),

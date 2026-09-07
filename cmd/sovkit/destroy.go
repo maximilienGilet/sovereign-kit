@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,16 +23,11 @@ func runDestroy(args []string, input io.Reader, output io.Writer, configPath str
 	if err != nil || len(positionals) > 1 {
 		return usageErrorf("usage: sovkit destroy [id] [--yes]")
 	}
-	dir := filepath.Dir(configPath)
-	store, err := state.Load(dir)
-	if err != nil {
-		return err
-	}
 	id := ""
 	if len(positionals) == 1 {
 		id = positionals[0]
 	}
-	deployment, err := resolveDeployment(dir, store, id)
+	dir, store, deployment, err := resolveTarget(configPath, id)
 	if err != nil {
 		return err
 	}
@@ -79,9 +74,19 @@ func runDestroy(args []string, input io.Reader, output io.Writer, configPath str
 			fmt.Fprintf(output, "Instance %d is already gone remotely.\n", deployment.Instance.ID)
 		}
 	}
-	keyErr := removeDeploymentKeys(ctx, client, dir, deployment)
-	if err := os.RemoveAll(state.DeploymentDir(dir, deployment.ID)); err != nil {
+	var keyErr error
+	removed, err := removeDeploymentKeys(ctx, client, dir, deployment)
+	if err != nil {
 		keyErr = err
+	} else if !removed {
+		fmt.Fprintln(output, "SSH key already absent from the Vast account.")
+	}
+	if err := os.RemoveAll(state.DeploymentDir(dir, deployment.ID)); err != nil {
+		if keyErr != nil {
+			keyErr = errors.Join(keyErr, err)
+		} else {
+			keyErr = err
+		}
 	}
 	wasTunneled := deployment.State == state.Tunneled || deployment.State == state.Serving
 	deployment.State = state.Destroyed
@@ -104,30 +109,33 @@ func runDestroy(args []string, input io.Reader, output io.Writer, configPath str
 }
 
 // removeDeploymentKeys deletes the deployment public key from the Vast
-// account. A missing local key or an already-removed remote key is noted,
-// not fatal; other failures are loud but never block the destroyed mark.
-func removeDeploymentKeys(ctx context.Context, client *vast.Client, dir string, deployment state.Deployment) error {
+// account. It reports whether a key was removed: absence is verifiably
+// clean, while an unreadable local key or a failed delete is an error.
+func removeDeploymentKeys(ctx context.Context, client *vast.Client, dir string, deployment state.Deployment) (bool, error) {
 	public, err := os.ReadFile(state.IdentityPath(dir, deployment.ID) + ".pub")
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("identity file already gone, skipping key cleanup")
+			return false, fmt.Errorf("identity file already gone, cannot verify key cleanup")
 		}
-		return err
+		return false, err
 	}
 	normalized, err := sshkey.Normalize(strings.TrimSpace(string(public)))
 	if err != nil {
-		return fmt.Errorf("local public key is invalid: %w", err)
+		return false, fmt.Errorf("local public key is invalid: %w", err)
 	}
 	keys, err := client.ListSSHKeys(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, key := range keys {
 		candidate, err := sshkey.Normalize(key.Key)
 		if err != nil || candidate != normalized {
 			continue
 		}
-		return client.DeleteSSHKey(ctx, key.ID)
+		if err := client.DeleteSSHKey(ctx, key.ID); err != nil {
+			return false, err
+		}
+		return true, nil
 	}
-	return fmt.Errorf("public key not found on the Vast account, skipping delete")
+	return false, nil
 }

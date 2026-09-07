@@ -55,18 +55,6 @@ func TestForwardCommandStrictEnforcesPinnedKey(t *testing.T) {
 	}
 }
 
-func TestForwardCommandAcceptNewPinsFirstContact(t *testing.T) {
-	spec, _ := forwardFixture(t)
-	spec.AcceptNewHostKey = true
-	command, err := ForwardCommand(context.Background(), spec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if text := argv(command.Args); !strings.Contains(text, "StrictHostKeyChecking=accept-new") {
-		t.Fatalf("missing accept-new in %q", text)
-	}
-}
-
 func TestForwardCommandRejectsBadSpec(t *testing.T) {
 	spec, _ := forwardFixture(t)
 	bad := spec

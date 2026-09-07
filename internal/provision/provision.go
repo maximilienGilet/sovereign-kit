@@ -135,11 +135,11 @@ func Provision(ctx context.Context, store *state.Store, dir string, inputs Input
 	}
 	deployment.Instance.ID = instanceID
 	if err := store.Add(deployment); err != nil {
-		return state.Deployment{}, err
+		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
 	store.SetActive(deployment.ID)
 	if err := store.Save(dir); err != nil {
-		return state.Deployment{}, err
+		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
 	instance, err := waitRunning(ctx, deps, deps.Vast, instanceID, inputs.ReadyTimeout)
 	if err != nil {
@@ -148,7 +148,7 @@ func Provision(ctx context.Context, store *state.Store, dir string, inputs Input
 	deployment.Instance.Status = instance.Status
 	deployment.SSH.Host, deployment.SSH.Port = instance.SSHHost, instance.SSHPort
 	if err := save(store, dir, &deployment); err != nil {
-		return state.Deployment{}, err
+		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
 	keys, err := deps.Scanner.Scan(ctx, instance.SSHHost, instance.SSHPort)
 	if err != nil {
@@ -174,7 +174,7 @@ func Provision(ctx context.Context, store *state.Store, dir string, inputs Input
 	}
 	deployment.State = state.Preparing
 	if err := save(store, dir, &deployment); err != nil {
-		return state.Deployment{}, err
+		return state.Deployment{}, destroyOrphan(ctx, store, dir, &deployment, deps.Vast, err)
 	}
 	ssh := config.SSH{
 		Host: instance.SSHHost, Port: instance.SSHPort, User: "root",
@@ -217,18 +217,31 @@ func waitRunning(ctx context.Context, deps Deps, vastAPI VastAPI, id int, timeou
 	}
 }
 
+// recordFailure marks the deployment failed and persists it, adding the
+// record when an earlier persist never landed.
+func recordFailure(store *state.Store, dir string, deployment *state.Deployment) error {
+	deployment.State = state.Failed
+	if _, ok := store.Get(deployment.ID); !ok {
+		if err := store.Add(*deployment); err != nil {
+			return err
+		}
+	}
+	return save(store, dir, deployment)
+}
+
 // destroyOrphan stops billing for a rented-but-broken instance and records
 // the failure. A failed destroy is reported loudly: the instance may bill.
 func destroyOrphan(ctx context.Context, store *state.Store, dir string, deployment *state.Deployment, vastAPI VastAPI, cause error) error {
-	deployment.State = state.Failed
-	if derr := vastAPI.DestroyInstance(ctx, deployment.Instance.ID); derr != nil {
-		if serr := save(store, dir, deployment); serr != nil {
-			return fmt.Errorf("%v; instance %d may still bill: destroy failed: %v (and the failure could not be recorded: %v)", cause, deployment.Instance.ID, derr, serr)
-		}
+	derr := vastAPI.DestroyInstance(ctx, deployment.Instance.ID)
+	serr := recordFailure(store, dir, deployment)
+	switch {
+	case derr != nil && serr != nil:
+		return fmt.Errorf("%v; instance %d may still bill: destroy failed: %v (and the failure could not be recorded: %v)", cause, deployment.Instance.ID, derr, serr)
+	case derr != nil:
 		return fmt.Errorf("%v; instance %d may still bill: destroy failed: %v", cause, deployment.Instance.ID, derr)
-	}
-	if serr := save(store, dir, deployment); serr != nil {
+	case serr != nil:
 		return fmt.Errorf("%v; orphan instance %d destroyed but the failure was not recorded: %v", cause, deployment.Instance.ID, serr)
+	default:
+		return fmt.Errorf("%v; orphan instance %d destroyed", cause, deployment.Instance.ID)
 	}
-	return fmt.Errorf("%v; orphan instance %d destroyed", cause, deployment.Instance.ID)
 }

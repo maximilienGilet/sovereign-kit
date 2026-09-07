@@ -270,6 +270,36 @@ func TestProvisionRentFailurePersistsNothing(t *testing.T) {
 	}
 }
 
+func TestProvisionAddFailureStillDestroysRented(t *testing.T) {
+	dir := state.Dir(t.TempDir())
+	vastAPI := &fakeVast{}
+	_, _, _, _, _, deps := testDeps(vastAPI)
+	store := &state.Store{Version: 1, Settings: state.DefaultSettings()}
+	inputs := testInputs()
+	occupant := state.Deployment{
+		ID: inputs.DeploymentID, RecipeID: "other", RecipeVersion: 1, State: state.Serving,
+		SSH:   state.SSH{Host: "h", Port: 22, User: "root", IdentityFile: "i", KnownHostsFile: "k"},
+		Route: state.Route{LocalHost: "127.0.0.1", LocalPort: 30001, RemoteHost: "127.0.0.1", RemotePort: 30000},
+	}
+	if err := store.Add(occupant); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Provision(context.Background(), store, dir, inputs, deps)
+	if err == nil || !strings.Contains(err.Error(), "orphan instance 123456 destroyed") {
+		t.Fatalf("expected orphan destroy, got %v", err)
+	}
+	if len(vastAPI.destroyed) != 1 {
+		t.Fatalf("destroyed = %+v", vastAPI.destroyed)
+	}
+	persisted, ok := store.Get(inputs.DeploymentID)
+	if !ok || persisted.State != state.Failed {
+		t.Fatalf("record = %+v %v", persisted, ok)
+	}
+	if _, err := state.Load(dir); err != nil {
+		t.Fatalf("failure not persisted: %v", err)
+	}
+}
+
 func TestProvisionLaunchFailureDestroysOrphan(t *testing.T) {
 	dir := state.Dir(t.TempDir())
 	vastAPI := &fakeVast{}

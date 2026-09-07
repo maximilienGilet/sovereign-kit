@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,21 @@ func resolveDeployment(dir string, store state.Store, id string) (state.Deployme
 		return state.Deployment{}, noActiveError(dir, store)
 	}
 	return deployment, nil
+}
+
+// resolveTarget loads the store and resolves id-or-active for one-shot
+// verbs, so each verb repeats neither the load nor the lookup.
+func resolveTarget(configPath, id string) (string, state.Store, state.Deployment, error) {
+	dir := filepath.Dir(configPath)
+	store, err := state.Load(dir)
+	if err != nil {
+		return "", state.Store{}, state.Deployment{}, err
+	}
+	deployment, err := resolveDeployment(dir, store, id)
+	if err != nil {
+		return "", state.Store{}, state.Deployment{}, err
+	}
+	return dir, store, deployment, nil
 }
 
 // requireNoLiveDeployment enforces one live instance at a time: provisioning
@@ -188,17 +204,22 @@ func serveTunnel(ctx context.Context, output io.Writer, dir string, store *state
 	})
 	refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer refreshCancel()
-	status := ""
-	if instance, gerr := client.GetInstance(refreshCtx, deployment.Instance.ID); gerr == nil {
-		status = instance.Status
-	}
-	if strings.EqualFold(status, "running") {
+	instance, gerr := client.GetInstance(refreshCtx, deployment.Instance.ID)
+	switch {
+	case gerr != nil:
+		// Unobservable after supervision end: keep Tunneled rather than
+		// claim a failure we cannot see. The supervision error below
+		// still signals the operator.
+	case strings.EqualFold(instance.Status, "running"):
 		deployment.State = state.Serving
-	} else {
+		if serr := persistDeployment(dir, store, deployment); serr != nil {
+			return serr
+		}
+	default:
 		deployment.State = state.Failed
-	}
-	if serr := persistDeployment(dir, store, deployment); serr != nil {
-		return serr
+		if serr := persistDeployment(dir, store, deployment); serr != nil {
+			return serr
+		}
 	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

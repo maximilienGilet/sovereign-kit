@@ -194,9 +194,9 @@ func runUp(args []string, input io.Reader, output io.Writer, configPath string) 
 	return serveTunnel(sigCtx, output, dir, &store, deployment, client)
 }
 
-func capLabel(cap float64) string {
-	if cap <= 0 {
+func capLabel(maxHourly float64) string {
+	if maxHourly <= 0 {
 		return "none"
 	}
-	return fmt.Sprintf("$%.4g/h", cap)
+	return fmt.Sprintf("$%.4g/h", maxHourly)
 }
