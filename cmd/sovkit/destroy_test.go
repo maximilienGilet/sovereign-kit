@@ -64,8 +64,8 @@ func TestDestroyHappyPathCleansEverything(t *testing.T) {
 		t.Fatalf("hits = %+v", hits)
 	}
 	deployment := loadDeployment(t, dir, "web-one")
-	if deployment.State != state.Destroyed {
-		t.Fatalf("state = %q", deployment.State)
+	if deployment.State != state.Destroyed || deployment.Instance.Status != "destroyed" {
+		t.Fatalf("state = %q instance = %q", deployment.State, deployment.Instance.Status)
 	}
 	store, err := state.Load(state.Dir(dir))
 	if err != nil {

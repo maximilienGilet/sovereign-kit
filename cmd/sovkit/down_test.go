@@ -119,8 +119,8 @@ func TestDownStopsLiveInstance(t *testing.T) {
 		t.Fatal("stop was not requested")
 	}
 	deployment := loadDeployment(t, dir, "web-one")
-	if deployment.State != state.Stopped {
-		t.Fatalf("state = %q", deployment.State)
+	if deployment.State != state.Stopped || deployment.Instance.Status != "stopped" {
+		t.Fatalf("state = %q instance = %q", deployment.State, deployment.Instance.Status)
 	}
 	store, err := state.Load(state.Dir(dir))
 	if err != nil {

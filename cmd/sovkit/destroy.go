@@ -95,6 +95,7 @@ func finalizeGoneDeployment(ctx context.Context, client *vast.Client, dir string
 	}
 	filesErr := os.RemoveAll(state.DeploymentDir(dir, deployment.ID))
 	deployment.State = state.Destroyed
+	deployment.Instance.Status = "destroyed"
 	if store.Active == deployment.ID {
 		store.ClearActive()
 	}

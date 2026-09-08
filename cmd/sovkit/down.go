@@ -54,6 +54,7 @@ func runDown(args []string, input io.Reader, output io.Writer, configPath string
 		return err
 	}
 	deployment.State = state.Stopped
+	deployment.Instance.Status = "stopped"
 	if store.Active == deployment.ID {
 		store.ClearActive()
 	}
