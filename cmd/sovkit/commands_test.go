@@ -382,3 +382,105 @@ func TestDoctorWithoutActiveDeploymentErrors(t *testing.T) {
 		t.Fatalf("expected no-active error, got %v", err)
 	}
 }
+
+func addParkedFixture(t *testing.T, dir, id string, port int, st state.DeploymentState) {
+	t.Helper()
+	store, err := state.Load(state.Dir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployment := state.Deployment{
+		ID: id, RecipeID: "qwen-solo-rtx5090", RecipeVersion: 1,
+		Instance: state.Instance{ID: 456, Status: "stopped", Offer: state.OfferSnapshot{GPUName: "RTX 5090", HourlyUSD: 0.30, Location: "DE"}},
+		SSH:      state.SSH{Host: "h", Port: 22, User: "root", IdentityFile: "i", KnownHostsFile: "k"},
+		Route:    state.Route{LocalHost: "127.0.0.1", LocalPort: port, RemoteHost: "127.0.0.1", RemotePort: 30000},
+		Spend:    state.Spend{HourlyUSD: 0.30},
+		State:    st,
+	}
+	if err := store.Add(deployment); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(state.Dir(dir)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStatusListsOthersAlongsideActive(t *testing.T) {
+	dir := t.TempDir()
+	active := writeStatusFixture(t, dir)
+	addParkedFixture(t, dir, "parked-1", 30001, state.Stopped)
+	var output bytes.Buffer
+	if err := runWith([]string{"status"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{active.ID, "Other deployments:", "parked-1", "stopped"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestStatusListsAllWhenNoneActive(t *testing.T) {
+	dir := t.TempDir()
+	writeStatusFixture(t, dir)
+	addParkedFixture(t, dir, "parked-1", 30001, state.Stopped)
+	store, err := state.Load(state.Dir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.ClearActive()
+	if err := store.Save(state.Dir(dir)); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := runWith([]string{"status"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{"parked-1", "stopped"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestStatusJSONListsAllWhenNoneActive(t *testing.T) {
+	dir := t.TempDir()
+	writeStatusFixture(t, dir)
+	addParkedFixture(t, dir, "parked-1", 30001, state.Destroyed)
+	store, err := state.Load(state.Dir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.ClearActive()
+	if err := store.Save(state.Dir(dir)); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := runWith([]string{"status", "--json"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	var list []map[string]any
+	if err := json.Unmarshal(output.Bytes(), &list); err != nil {
+		t.Fatalf("invalid JSON array: %v\n%s", err, output.String())
+	}
+	if len(list) != 2 {
+		t.Fatalf("entries = %d, want 2", len(list))
+	}
+}
+
+func TestStatusShowsStoppedByID(t *testing.T) {
+	dir := t.TempDir()
+	writeStatusFixture(t, dir)
+	addParkedFixture(t, dir, "parked-1", 30001, state.Stopped)
+	var output bytes.Buffer
+	if err := runWith([]string{"status", "parked-1"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"parked-1", "stopped"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("missing %q:\n%s", want, output.String())
+		}
+	}
+}

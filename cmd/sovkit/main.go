@@ -89,7 +89,7 @@ Commands:
   recipes     List the embedded recipes
   offers      Search eligible Vast offers for a recipe (no renting)
   up          Provision a recipe: rent, prepare, serve, tunnel
-  status      Show a deployment (the active one by default)
+  status      Show deployments (active in detail, others listed)
   down        Stop a deployment instance (billing paused)
   destroy     Destroy a deployment instance and its keys
   resume      Re-attach the tunnel to a deployment
@@ -389,22 +389,55 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 	if len(positionals) > 1 {
 		return usageErrorf("usage: sovkit status [id] [--json]")
 	}
-	id := ""
-	if len(positionals) == 1 {
-		id = positionals[0]
-	}
-	_, _, deployment, err := resolveTarget(configPath, id)
+	dir := filepath.Dir(configPath)
+	store, err := state.Load(dir)
 	if err != nil {
 		return err
 	}
+	if len(positionals) == 1 {
+		deployment, err := resolveDeployment(dir, store, positionals[0])
+		if err != nil {
+			return err
+		}
+		return printDeployment(output, deployment, *asJSON)
+	}
+	active, ok := store.ActiveDeployment()
+	if !ok {
+		if len(store.Deployments) == 0 {
+			return noActiveError(dir, store)
+		}
+		return printDeploymentList(output, store.Deployments, *asJSON)
+	}
+	if err := printDeployment(output, active, *asJSON); err != nil {
+		return err
+	}
 	if *asJSON {
+		return nil
+	}
+	var others []state.Deployment
+	for _, deployment := range store.Deployments {
+		if deployment.ID != active.ID {
+			others = append(others, deployment)
+		}
+	}
+	if len(others) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(output, "Other deployments:"); err != nil {
+		return err
+	}
+	return printDeploymentList(output, others, false)
+}
+
+func printDeployment(output io.Writer, deployment state.Deployment, asJSON bool) error {
+	if asJSON {
 		return writeJSON(output, deployment)
 	}
 	cap := "none"
 	if deployment.CapUSD > 0 {
 		cap = fmt.Sprintf("$%.4g/h", deployment.CapUSD)
 	}
-	fmt.Fprintf(output, `%s · %s
+	_, err := fmt.Fprintf(output, `%s · %s
   recipe %s · instance %d (%s)
   route http://%s:%d
   spend $%.4g/h · $%.2f total · cap %s
@@ -413,6 +446,24 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 		deployment.Instance.ID, deployment.Instance.Status,
 		deployment.Route.LocalHost, deployment.Route.LocalPort,
 		deployment.Spend.HourlyUSD, deployment.Spend.TotalUSD, cap)
+	return err
+}
+
+// printDeploymentList shows one line per deployment, newest first. Stopped
+// and destroyed records stay visible so their ids remain discoverable.
+func printDeploymentList(output io.Writer, deployments []state.Deployment, asJSON bool) error {
+	if asJSON {
+		return writeJSON(output, deployments)
+	}
+	for index := len(deployments) - 1; index >= 0; index-- {
+		deployment := deployments[index]
+		if _, err := fmt.Fprintf(output, "  %s · %s · %s · instance %d (%s) · :%d · $%.4g/h\n",
+			deployment.ID, deployment.State, deployment.RecipeID,
+			deployment.Instance.ID, deployment.Instance.Status,
+			deployment.Route.LocalPort, deployment.Spend.HourlyUSD); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
