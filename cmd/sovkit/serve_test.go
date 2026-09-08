@@ -4,28 +4,23 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/maximilienGilet/sovereign-kit/internal/cli"
 	"github.com/maximilienGilet/sovereign-kit/internal/route"
 	"github.com/maximilienGilet/sovereign-kit/internal/state"
 	"github.com/maximilienGilet/sovereign-kit/internal/vast"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
 )
 
-type stubTunnel struct {
-	done chan error
-}
-
-func (tunnel *stubTunnel) Start() error { return nil }
-
-func (tunnel *stubTunnel) Done() <-chan error { return tunnel.done }
-
-func (tunnel *stubTunnel) Stop() error { return nil }
-
 func serveFixture(t *testing.T, dir string) state.Deployment {
+
 	t.Helper()
 	sdir := state.Dir(dir)
 	store, err := state.Load(sdir)
@@ -49,18 +44,28 @@ func serveFixture(t *testing.T, dir string) state.Deployment {
 	return deployment
 }
 
-func stubServeTunnel(t *testing.T, tunnelErr error, healthErr error) {
+func stubServeTunnel(t *testing.T, tunnel *gateTunnel) {
 	t.Helper()
 	previousOpen := openTunnel
-	done := make(chan error, 1)
-	done <- tunnelErr
 	openTunnel = func(context.Context, route.TunnelSpec, io.Writer) (cli.Tunnel, error) {
-		return &stubTunnel{done: done}, nil
+		return tunnel, nil
 	}
 	t.Cleanup(func() { openTunnel = previousOpen })
-	previousCheck := checkEndpoint
-	checkEndpoint = func(context.Context, string) error { return healthErr }
-	t.Cleanup(func() { checkEndpoint = previousCheck })
+}
+
+// gateTunnel is a fake forward the test drives by hand.
+type gateTunnel struct {
+	done    chan error
+	stopped bool
+}
+
+func (tunnel *gateTunnel) Start() error { return nil }
+
+func (tunnel *gateTunnel) Done() <-chan error { return tunnel.done }
+
+func (tunnel *gateTunnel) Stop() error {
+	tunnel.stopped = true
+	return nil
 }
 
 func serveClient(t *testing.T, status string, fail bool) *vast.Client {
@@ -76,10 +81,12 @@ func serveClient(t *testing.T, status string, fail bool) *vast.Client {
 	return vast.NewClient(server.URL, "test-token")
 }
 
-func TestServeTunnelKeepsTunneledWhenStatusUnobservable(t *testing.T) {
+func TestServeTunnelEstablishFailureKeepsState(t *testing.T) {
 	dir := t.TempDir()
 	deployment := serveFixture(t, dir)
-	stubServeTunnel(t, errors.New("ssh exited"), nil)
+	done := make(chan error, 1)
+	done <- errors.New("ssh exited")
+	stubServeTunnel(t, &gateTunnel{done: done})
 	store, err := state.Load(state.Dir(dir))
 	if err != nil {
 		t.Fatal(err)
@@ -91,22 +98,101 @@ func TestServeTunnelKeepsTunneledWhenStatusUnobservable(t *testing.T) {
 	}
 	persisted, ok := mustLoad(t, dir, deployment.ID)
 	if !ok || persisted.State != state.Tunneled {
-		t.Fatalf("state = %+v, want kept tunneled", persisted)
+		t.Fatalf("state = %+v, want unchanged tunneled", persisted)
 	}
 }
 
-func TestServeTunnelSettlesServingWhenRunning(t *testing.T) {
+func TestServeTunnelEstablishCancelledErrors(t *testing.T) {
 	dir := t.TempDir()
 	deployment := serveFixture(t, dir)
-	stubServeTunnel(t, errors.New("ssh exited"), nil)
+	done := make(chan error, 1)
+	done <- errors.New("ssh exited")
+	stubServeTunnel(t, &gateTunnel{done: done})
 	store, err := state.Load(state.Dir(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	var output bytes.Buffer
-	err = serveTunnel(context.Background(), &output, state.Dir(dir), &store, deployment, serveClient(t, "running", false))
-	if err == nil || !strings.Contains(err.Error(), "ssh exited") {
-		t.Fatalf("expected tunnel error, got %v", err)
+	if err := serveTunnel(ctx, &output, state.Dir(dir), &store, deployment, serveClient(t, "running", false)); err == nil {
+		t.Fatal("expected cancellation error during establishment")
+	}
+}
+
+// liveEndpoint serves /v1/models on the fixture route. It skips when the
+// port is occupied so the suite never flakes on a busy machine.
+func liveEndpoint(t *testing.T) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:30000")
+	if err != nil {
+		t.Skipf("port 30000 occupied: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	})
+	server := &http.Server{Handler: mux}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { _ = server.Close() })
+}
+
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (buffer *safeBuffer) Write(data []byte) (int, error) {
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+	return buffer.buf.Write(data)
+}
+
+func (buffer *safeBuffer) String() string {
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+	return buffer.buf.String()
+}
+
+func waitOutput(t *testing.T, buffer *safeBuffer, want string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if strings.Contains(buffer.String(), want) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("never saw %q in %q", want, buffer.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func TestServeTunnelHoldsRouteUntilCancel(t *testing.T) {
+	liveEndpoint(t)
+	dir := t.TempDir()
+	deployment := serveFixture(t, dir)
+	tunnel := &gateTunnel{done: make(chan error, 1)}
+	stubServeTunnel(t, tunnel)
+	store, err := state.Load(state.Dir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	output := &safeBuffer{}
+	result := make(chan error, 1)
+	go func() {
+		result <- serveTunnel(ctx, output, state.Dir(dir), &store, deployment, serveClient(t, "running", false))
+	}()
+	waitOutput(t, output, "Tunnel ready")
+	cancel()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("cancellation must map to nil, got %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve did not stop after cancel")
 	}
 	persisted, ok := mustLoad(t, dir, deployment.ID)
 	if !ok || persisted.State != state.Serving {
@@ -114,17 +200,32 @@ func TestServeTunnelSettlesServingWhenRunning(t *testing.T) {
 	}
 }
 
-func TestServeTunnelMapsCancellationToNil(t *testing.T) {
+func TestServeTunnelCrashesToServingOnTunnelExit(t *testing.T) {
+	liveEndpoint(t)
 	dir := t.TempDir()
 	deployment := serveFixture(t, dir)
-	stubServeTunnel(t, context.Canceled, nil)
+	tunnel := &gateTunnel{done: make(chan error, 1)}
+	stubServeTunnel(t, tunnel)
 	store, err := state.Load(state.Dir(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var output bytes.Buffer
-	if err := serveTunnel(context.Background(), &output, state.Dir(dir), &store, deployment, serveClient(t, "running", false)); err != nil {
-		t.Fatalf("cancellation must map to nil, got %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	output := &safeBuffer{}
+	result := make(chan error, 1)
+	go func() {
+		result <- serveTunnel(ctx, output, state.Dir(dir), &store, deployment, serveClient(t, "running", false))
+	}()
+	waitOutput(t, output, "Tunnel ready")
+	tunnel.done <- errors.New("ssh exited")
+	select {
+	case err := <-result:
+		if err == nil || !strings.Contains(err.Error(), "ssh exited") {
+			t.Fatalf("expected tunnel error, got %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve did not stop after tunnel exit")
 	}
 	persisted, ok := mustLoad(t, dir, deployment.ID)
 	if !ok || persisted.State != state.Serving {

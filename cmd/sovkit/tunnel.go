@@ -144,6 +144,24 @@ func (spin *spinner) Stop(final string) {
 	fmt.Fprintln(spin.out, final)
 }
 
+// Print writes a full milestone line above the animation: the spinner row
+// is cleared first so lines never glue onto it. Non-terminals print plainly.
+func (spin *spinner) Print(line string) {
+	spin.mu.Lock()
+	defer spin.mu.Unlock()
+	if spin.animate {
+		fmt.Fprint(spin.out, "\r\033[K"+line+"\n")
+		return
+	}
+	fmt.Fprintln(spin.out, line)
+}
+
+// Report prints a milestone and makes it the live state text.
+func (spin *spinner) Report(line string) {
+	spin.Print(line)
+	spin.SetMessage(line)
+}
+
 // readConfirmLine reads one prompt answer. It consumes exactly one line:
 // a fresh buffered reader per call would swallow piped input past the
 // newline, silently turning later answers into the default.
@@ -231,43 +249,38 @@ var openTunnel = func(ctx context.Context, spec route.TunnelSpec, output io.Writ
 	return startExecTunnel(ctx, spec, output)
 }
 
-// checkEndpoint verifies the local route answers. Overridable in tests.
-var checkEndpoint = route.Healthcheck
-
-// serveTunnel opens the forward for a prepared deployment, verifies the
-// route, marks it tunneled, and supervises until exit. Afterwards the
-// record settles to serving when the instance still runs, failed
-// otherwise; cancellation maps to nil because the instance outlives us.
+// serveTunnel opens the forward, waits until the route answers, marks the
+// deployment tunneled, and holds the route until exit or cancellation.
+// Afterwards the record settles to serving when the instance still runs,
+// failed otherwise; cancellation maps to nil because the instance outlives
+// us. The caller stays in the foreground: returning ends the route.
 func serveTunnel(ctx context.Context, output io.Writer, dir string, store *state.Store, deployment state.Deployment, client *vast.Client) error {
 	endpoint := fmt.Sprintf("http://%s:%d", deployment.Route.LocalHost, deployment.Route.LocalPort)
 	tunnel, err := openTunnel(ctx, tunnelSpec(deployment), output)
 	if err != nil {
 		return err
 	}
-	healthCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	healthErr := checkEndpoint(healthCtx, endpoint)
-	cancel()
-	if healthErr != nil {
-		_ = tunnel.Stop()
-		return fmt.Errorf("server unhealthy at %s: %w", endpoint, healthErr)
+	defer tunnel.Stop()
+	if _, err := cli.SuperviseTunnel(ctx, output, tunnel, endpoint, cli.StartDependencies{
+		Healthcheck: route.Healthcheck, Clock: setup.RealClock{},
+		PollInterval: 5 * time.Second, PollTimeout: 30 * time.Minute,
+	}); err != nil {
+		return err
 	}
 	deployment.State = state.Tunneled
 	if err := store.SetActive(deployment.ID); err != nil {
-		_ = tunnel.Stop()
 		return err
 	}
 	if err := persistDeployment(dir, store, deployment); err != nil {
-		_ = tunnel.Stop()
 		return err
 	}
-	if _, err := fmt.Fprintf(output, "Tunnel ready at %s\n", endpoint); err != nil {
-		_ = tunnel.Stop()
+	if _, err := fmt.Fprintf(output, "Tunnel ready at %s — holding the route (Ctrl-C stops locally; the instance keeps billing)\n", endpoint); err != nil {
 		return err
 	}
-	_, err = cli.SuperviseTunnel(ctx, output, tunnel, endpoint, cli.StartDependencies{
-		Healthcheck: route.Healthcheck, Clock: setup.RealClock{},
-		PollInterval: 5 * time.Second, PollTimeout: 30 * time.Minute,
-	})
+	select {
+	case <-ctx.Done():
+	case err = <-tunnel.Done():
+	}
 	refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer refreshCancel()
 	instance, gerr := client.GetInstance(refreshCtx, deployment.Instance.ID)

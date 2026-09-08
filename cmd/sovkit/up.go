@@ -186,10 +186,7 @@ func runUp(args []string, input io.Reader, output io.Writer, configPath string) 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	spin := newSpinner(os.Stderr, "Provisioning "+resolved.ID)
-	deps := defaultProvisionDeps(client, input, output, func(line string) {
-		fmt.Fprintln(os.Stderr, line)
-		spin.SetMessage(line)
-	})
+	deps := defaultProvisionDeps(client, input, output, spin.Report)
 	deployment, err := provisionPrepare(sigCtx, &store, dir, provision.Inputs{
 		Recipe: resolved, Offer: chosen.Offer, CapUSD: query.CapUSD,
 		Port: port, DeploymentID: store.NextID(resolved.ID, time.Now()),
