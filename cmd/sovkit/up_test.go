@@ -107,6 +107,9 @@ func TestUpRefusesLiveDeployment(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "live-one") {
 		t.Fatalf("expected live refusal, got %v", err)
 	}
+	if !strings.Contains(err.Error(), "sovkit resume live-one") {
+		t.Fatalf("refusal must name recovery commands, got %v", err)
+	}
 	if rented {
 		t.Fatal("must not rent while another owns a live instance")
 	}
@@ -311,5 +314,8 @@ func TestUpBlocksWhenVerificationFails(t *testing.T) {
 	err := runWith([]string{"up", "qwen-solo-rtx5090", "--yes"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml"))
 	if err == nil || !strings.Contains(err.Error(), "cannot verify") {
 		t.Fatalf("expected verification block, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Vast console") {
+		t.Fatalf("block must guide to console check, got %v", err)
 	}
 }

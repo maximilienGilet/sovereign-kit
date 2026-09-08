@@ -223,13 +223,13 @@ func verifyLiveDeployments(ctx context.Context, client *vast.Client, dir string,
 		}
 		exists, err := client.InstanceExists(ctx, deployment.Instance.ID)
 		if err != nil {
-			return fmt.Errorf("cannot verify instance %d: %w; refusing to rent blind", deployment.Instance.ID, err)
+			return fmt.Errorf("cannot verify instance %d (%v); refusing to rent blind — check it on the Vast console, then %s if it is gone", deployment.Instance.ID, err, destroyHint(deployment.ID))
 		}
 		if exists {
 			if deployment.State == state.Failed {
 				return fmt.Errorf("deployment %q failed and its instance may still bill; run `sovkit destroy %s` first (or resume/down it if it can still serve)", deployment.ID, deployment.ID)
 			}
-			return fmt.Errorf("deployment %q owns a live instance (%s); resume, down or destroy it first", deployment.ID, deployment.State)
+			return fmt.Errorf("deployment %q owns a live instance (%s); resume it (`sovkit resume %s`), pause billing (`sovkit down %s`), or end it (`sovkit destroy %s`)", deployment.ID, deployment.State, deployment.ID, deployment.ID, deployment.ID)
 		}
 		fmt.Fprintf(output, "Deployment %q is gone remotely; cleaning up…\n", deployment.ID)
 		if err := finalizeGoneDeployment(ctx, client, dir, store, deployment, output); err != nil {

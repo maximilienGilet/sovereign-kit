@@ -57,7 +57,7 @@ func runResume(args []string, input io.Reader, output io.Writer, configPath stri
 	defer cancel()
 	instance, err := client.GetInstance(ctx, deployment.Instance.ID)
 	if err != nil {
-		return fmt.Errorf("read instance %d: %w (if the instance is gone, run `sovkit destroy %s` to clean up)", deployment.Instance.ID, err, deployment.ID)
+		return fmt.Errorf("read instance %d: %w (if the instance is gone, %s)", deployment.Instance.ID, err, destroyHint(deployment.ID))
 	}
 	if !strings.EqualFold(instance.Status, "running") {
 		fmt.Fprintf(output, "Instance %d is %s, requesting start and waiting…\n", deployment.Instance.ID, instance.Status)

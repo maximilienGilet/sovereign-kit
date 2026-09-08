@@ -24,6 +24,11 @@ func noActiveError(dir string, store state.Store) error {
 	return fmt.Errorf("no active deployment.%s", legacyHint(dir, store))
 }
 
+// destroyHint names the recovery command for a dead-end deployment.
+func destroyHint(id string) string {
+	return fmt.Sprintf("run `sovkit destroy %s` to clean up", id)
+}
+
 // resolveDeployment finds a deployment by id, or the active one when id is
 // empty.
 func resolveDeployment(dir string, store state.Store, id string) (state.Deployment, error) {

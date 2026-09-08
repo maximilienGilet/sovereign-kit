@@ -48,7 +48,7 @@ func runDown(args []string, input io.Reader, output io.Writer, configPath string
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("instance %d is gone remotely; run `sovkit destroy %s` to clean up", deployment.Instance.ID, deployment.ID)
+		return fmt.Errorf("instance %d is gone remotely; %s", deployment.Instance.ID, destroyHint(deployment.ID))
 	}
 	if err := client.StopInstance(ctx, deployment.Instance.ID); err != nil {
 		return err
