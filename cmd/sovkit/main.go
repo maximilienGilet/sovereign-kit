@@ -407,15 +407,15 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 		if len(store.Deployments) == 0 {
 			return noActiveError(dir, store)
 		}
-		live := liveDeployments(store, *showAll)
-		if len(live) == 0 {
+		visible := visibleDeployments(store.Deployments, *showAll)
+		if len(visible) == 0 {
 			if *asJSON {
 				return writeJSON(output, []state.Deployment{})
 			}
 			_, err := fmt.Fprintln(output, "No live deployments.")
 			return err
 		}
-		return printDeploymentList(output, live, *asJSON)
+		return printDeploymentList(output, visible, *asJSON)
 	}
 	if err := printDeployment(output, active, *asJSON); err != nil {
 		return err
@@ -424,7 +424,7 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 		return nil
 	}
 	var others []state.Deployment
-	for _, deployment := range liveDeployments(store, *showAll) {
+	for _, deployment := range visibleDeployments(store.Deployments, *showAll) {
 		if deployment.ID != active.ID {
 			others = append(others, deployment)
 		}
@@ -438,16 +438,17 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 	return printDeploymentList(output, others, false)
 }
 
-// liveDeployments returns the records worth showing: everything but
-// destroyed, unless all asks for the full history.
-func liveDeployments(store state.Store, all bool) []state.Deployment {
-	live := []state.Deployment{}
-	for _, deployment := range store.Deployments {
+// visibleDeployments returns the records worth showing: everything but
+// destroyed, unless all asks for the full history. Named apart from
+// State.Live on purpose: stopped deployments stay visible.
+func visibleDeployments(deployments []state.Deployment, all bool) []state.Deployment {
+	visible := []state.Deployment{}
+	for _, deployment := range deployments {
 		if deployment.State != state.Destroyed || all {
-			live = append(live, deployment)
+			visible = append(visible, deployment)
 		}
 	}
-	return live
+	return visible
 }
 
 func printDeployment(output io.Writer, deployment state.Deployment, asJSON bool) error {
