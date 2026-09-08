@@ -159,7 +159,7 @@ func TestDestroyReportsKeyCleanupFailureButDestroys(t *testing.T) {
 	destroyFake(t, hits, true, true, false)
 	var output bytes.Buffer
 	err := runWith([]string{"destroy", "--yes"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml"))
-	if err == nil || !strings.Contains(err.Error(), "key cleanup failed") {
+	if err == nil || !strings.Contains(err.Error(), "cleanup failed") {
 		t.Fatalf("expected key cleanup error, got %v", err)
 	}
 	if deployment := loadDeployment(t, dir, "web-one"); deployment.State != state.Destroyed {

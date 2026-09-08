@@ -74,38 +74,31 @@ func runDestroy(args []string, input io.Reader, output io.Writer, configPath str
 			fmt.Fprintf(output, "Instance %d is already gone remotely.\n", deployment.Instance.ID)
 		}
 	}
-	var keyErr error
-	removed, err := removeDeploymentKeys(ctx, client, dir, deployment)
-	if err != nil {
-		keyErr = err
-	} else if !removed {
-		fmt.Fprintln(output, "SSH key already absent from the Vast account.")
-	}
-	if err := os.RemoveAll(state.DeploymentDir(dir, deployment.ID)); err != nil {
-		if keyErr != nil {
-			keyErr = errors.Join(keyErr, err)
-		} else {
-			keyErr = err
-		}
+	if err := finalizeGoneDeployment(ctx, client, dir, &store, deployment, output); err != nil {
+		return fmt.Errorf("destroyed, but cleanup failed (remove leftovers manually): %v", err)
 	}
 	wasTunneled := deployment.State == state.Tunneled || deployment.State == state.Serving
+	if wasTunneled {
+		fmt.Fprintln(output, "If sovkit up or resume is running for this deployment, stop it (Ctrl-C); this command only affects the remote instance.")
+	}
+	_, err = fmt.Fprintf(output, "Destroyed instance %d.\n", deployment.Instance.ID)
+	return err
+}
+
+// finalizeGoneDeployment cleans local residue for an instance Vast no
+// longer knows: account key, files, record. Every step is attempted;
+// failures join into one error. Billing already ended remotely.
+func finalizeGoneDeployment(ctx context.Context, client *vast.Client, dir string, store *state.Store, deployment state.Deployment, output io.Writer) error {
+	removed, err := removeDeploymentKeys(ctx, client, dir, deployment)
+	if err == nil && !removed {
+		fmt.Fprintln(output, "SSH key already absent from the Vast account.")
+	}
+	filesErr := os.RemoveAll(state.DeploymentDir(dir, deployment.ID))
 	deployment.State = state.Destroyed
 	if store.Active == deployment.ID {
 		store.ClearActive()
 	}
-	if err := persistDeployment(dir, &store, deployment); err != nil {
-		return err
-	}
-	if wasTunneled {
-		fmt.Fprintln(output, "If sovkit up or resume is running for this deployment, stop it (Ctrl-C); this command only affects the remote instance.")
-	}
-	if _, err := fmt.Fprintf(output, "Destroyed instance %d.\n", deployment.Instance.ID); err != nil {
-		return err
-	}
-	if keyErr != nil {
-		return fmt.Errorf("destroyed, but SSH key cleanup failed (remove the account key manually): %v", keyErr)
-	}
-	return nil
+	return errors.Join(err, filesErr, persistDeployment(dir, store, deployment))
 }
 
 // removeDeploymentKeys deletes the deployment public key from the Vast

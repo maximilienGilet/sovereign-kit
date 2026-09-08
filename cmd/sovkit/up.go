@@ -173,14 +173,16 @@ func runUp(args []string, input io.Reader, output io.Writer, configPath string) 
 	if *verifyHostKey && !stdinInteractive(input) {
 		return usageErrorf("--verify-host-key needs an interactive terminal without --yes")
 	}
-	if err := requireNoLiveDeployment(store); err != nil {
+	client := vast.NewClient(vastAPIBaseURL, token)
+	guardCtx, guardCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer guardCancel()
+	if err := verifyLiveDeployments(guardCtx, client, dir, &store, output); err != nil {
 		return err
 	}
 	port, err := store.AllocatePort()
 	if err != nil {
 		return err
 	}
-	client := vast.NewClient(vastAPIBaseURL, token)
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	spin := newSpinner(os.Stderr, "Provisioning "+resolved.ID)
@@ -206,4 +208,33 @@ func capLabel(maxHourly float64) string {
 		return "none"
 	}
 	return fmt.Sprintf("$%.4g/h", maxHourly)
+}
+
+// verifyLiveDeployments enforces one live instance at a time against live
+// truth, not stale records. Blockers confirmed gone remotely are cleaned
+// up on the spot; live or unverifiable blockers refuse with guidance.
+func verifyLiveDeployments(ctx context.Context, client *vast.Client, dir string, store *state.Store, output io.Writer) error {
+	for _, deployment := range store.Deployments {
+		if !deployment.State.Live() {
+			continue
+		}
+		if deployment.Instance.ID <= 0 {
+			return fmt.Errorf("deployment %q has no instance id; run `sovkit destroy %s` to clear it", deployment.ID, deployment.ID)
+		}
+		exists, err := client.InstanceExists(ctx, deployment.Instance.ID)
+		if err != nil {
+			return fmt.Errorf("cannot verify instance %d: %w; refusing to rent blind", deployment.Instance.ID, err)
+		}
+		if exists {
+			if deployment.State == state.Failed {
+				return fmt.Errorf("deployment %q failed and its instance may still bill; run `sovkit destroy %s` first (or resume/down it if it can still serve)", deployment.ID, deployment.ID)
+			}
+			return fmt.Errorf("deployment %q owns a live instance (%s); resume, down or destroy it first", deployment.ID, deployment.State)
+		}
+		fmt.Fprintf(output, "Deployment %q is gone remotely; cleaning up…\n", deployment.ID)
+		if err := finalizeGoneDeployment(ctx, client, dir, store, deployment, output); err != nil {
+			return fmt.Errorf("cannot clear gone deployment %q: %w", deployment.ID, err)
+		}
+	}
+	return nil
 }

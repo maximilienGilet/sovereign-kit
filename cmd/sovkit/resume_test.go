@@ -116,6 +116,8 @@ func TestResumeErrorsWhenInstanceGone(t *testing.T) {
 	var output bytes.Buffer
 	if err := runWith([]string{"resume"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err == nil {
 		t.Fatal("expected gone-instance error")
+	} else if !strings.Contains(err.Error(), "sovkit destroy") {
+		t.Fatalf("error must guide to destroy: %v", err)
 	}
 }
 

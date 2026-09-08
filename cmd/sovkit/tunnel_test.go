@@ -40,27 +40,6 @@ func TestResolveDeploymentFindsByIDAndActive(t *testing.T) {
 	}
 }
 
-func TestRequireNoLiveDeploymentBlocksLive(t *testing.T) {
-	if err := requireNoLiveDeployment(helperStore()); err == nil {
-		t.Fatal("expected live instance refusal")
-	} else if !strings.Contains(err.Error(), "live-one") {
-		t.Fatalf("error must name the deployment: %v", err)
-	}
-	quiet := state.Store{Deployments: []state.Deployment{
-		{ID: "s", State: state.Stopped},
-		{ID: "d", State: state.Destroyed},
-		{ID: "f", State: state.Failed},
-	}}
-	if err := requireNoLiveDeployment(quiet); err == nil {
-		t.Fatal("expected failed deployment to block: it may still bill")
-	} else if !strings.Contains(err.Error(), "sovkit destroy f") {
-		t.Fatalf("error must guide to destroy: %v", err)
-	}
-	if err := requireNoLiveDeployment(state.Store{}); err != nil {
-		t.Fatalf("empty store must allow: %v", err)
-	}
-}
-
 func TestReadConfirmLineTreatsUnreadableAsEmpty(t *testing.T) {
 	if got := readConfirmLine(strings.NewReader("y\n")); got != "y" {
 		t.Fatalf("got %q", got)

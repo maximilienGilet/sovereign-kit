@@ -42,7 +42,15 @@ func runDown(args []string, input io.Reader, output io.Writer, configPath string
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := vast.NewClient(vastAPIBaseURL, token).StopInstance(ctx, deployment.Instance.ID); err != nil {
+	client := vast.NewClient(vastAPIBaseURL, token)
+	exists, err := client.InstanceExists(ctx, deployment.Instance.ID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("instance %d is gone remotely; run `sovkit destroy %s` to clean up", deployment.Instance.ID, deployment.ID)
+	}
+	if err := client.StopInstance(ctx, deployment.Instance.ID); err != nil {
 		return err
 	}
 	deployment.State = state.Stopped

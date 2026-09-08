@@ -95,6 +95,10 @@ func TestDownStopsLiveInstance(t *testing.T) {
 	writeLifecycleFixture(t, dir, "web-one", state.Serving)
 	var stopped bool
 	fakeVast(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v0/instances/123456") {
+			_, _ = w.Write([]byte(`{"instances":{"id":123456}}`))
+			return
+		}
 		if r.Method == http.MethodPut && r.URL.Path == "/api/v0/instances/123456/" {
 			stopped = true
 			body := make([]byte, r.ContentLength)
@@ -170,6 +174,26 @@ func TestDownKeepsStateOnAPIFailure(t *testing.T) {
 	var output bytes.Buffer
 	if err := runWith([]string{"down"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err == nil {
 		t.Fatal("expected stop error")
+	}
+	if deployment := loadDeployment(t, dir, "web-one"); deployment.State != state.Serving {
+		t.Fatalf("state = %q, want unchanged serving", deployment.State)
+	}
+}
+
+func TestDownGuidesToDestroyWhenGone(t *testing.T) {
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "web-one", state.Serving)
+	fakeVast(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v0/instances/123456") {
+			_, _ = w.Write([]byte(`{"instances":null}`))
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	var output bytes.Buffer
+	err := runWith([]string{"down"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml"))
+	if err == nil || !strings.Contains(err.Error(), "gone remotely") {
+		t.Fatalf("expected gone guidance, got %v", err)
 	}
 	if deployment := loadDeployment(t, dir, "web-one"); deployment.State != state.Serving {
 		t.Fatalf("state = %q, want unchanged serving", deployment.State)
