@@ -274,7 +274,10 @@ func serveTunnel(ctx context.Context, output io.Writer, dir string, store *state
 	if err := persistDeployment(dir, store, deployment); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(output, "Tunnel ready at %s — holding the route (Ctrl-C stops locally; the instance keeps billing)\n", endpoint); err != nil {
+	if _, err := fmt.Fprintf(output, "Tunnel ready at %s\n", endpoint); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(output, "Holding the route (Ctrl-C stops locally; the instance keeps billing)."); err != nil {
 		return err
 	}
 	select {

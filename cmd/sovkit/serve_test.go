@@ -44,7 +44,7 @@ func serveFixture(t *testing.T, dir string) state.Deployment {
 	return deployment
 }
 
-func stubServeTunnel(t *testing.T, tunnel *gateTunnel) {
+func stubServeTunnel(t *testing.T, tunnel *manualTunnel) {
 	t.Helper()
 	previousOpen := openTunnel
 	openTunnel = func(context.Context, route.TunnelSpec, io.Writer) (cli.Tunnel, error) {
@@ -53,17 +53,17 @@ func stubServeTunnel(t *testing.T, tunnel *gateTunnel) {
 	t.Cleanup(func() { openTunnel = previousOpen })
 }
 
-// gateTunnel is a fake forward the test drives by hand.
-type gateTunnel struct {
+// manualTunnel is a fake forward the test drives by hand.
+type manualTunnel struct {
 	done    chan error
 	stopped bool
 }
 
-func (tunnel *gateTunnel) Start() error { return nil }
+func (tunnel *manualTunnel) Start() error { return nil }
 
-func (tunnel *gateTunnel) Done() <-chan error { return tunnel.done }
+func (tunnel *manualTunnel) Done() <-chan error { return tunnel.done }
 
-func (tunnel *gateTunnel) Stop() error {
+func (tunnel *manualTunnel) Stop() error {
 	tunnel.stopped = true
 	return nil
 }
@@ -86,7 +86,7 @@ func TestServeTunnelEstablishFailureKeepsState(t *testing.T) {
 	deployment := serveFixture(t, dir)
 	done := make(chan error, 1)
 	done <- errors.New("ssh exited")
-	stubServeTunnel(t, &gateTunnel{done: done})
+	stubServeTunnel(t, &manualTunnel{done: done})
 	store, err := state.Load(state.Dir(dir))
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestServeTunnelEstablishCancelledErrors(t *testing.T) {
 	deployment := serveFixture(t, dir)
 	done := make(chan error, 1)
 	done <- errors.New("ssh exited")
-	stubServeTunnel(t, &gateTunnel{done: done})
+	stubServeTunnel(t, &manualTunnel{done: done})
 	store, err := state.Load(state.Dir(dir))
 	if err != nil {
 		t.Fatal(err)
@@ -168,67 +168,74 @@ func waitOutput(t *testing.T, buffer *safeBuffer, want string) {
 	}
 }
 
-func TestServeTunnelHoldsRouteUntilCancel(t *testing.T) {
+// holdHarness runs serveTunnel until "Tunnel ready" with a live endpoint.
+type holdHarness struct {
+	dir        string
+	deployment state.Deployment
+	store      state.Store
+	output     *safeBuffer
+	result     chan error
+	cancel     context.CancelFunc
+	tunnel     *manualTunnel
+}
+
+func holdServe(t *testing.T, tunnel *manualTunnel) *holdHarness {
+	t.Helper()
 	liveEndpoint(t)
 	dir := t.TempDir()
 	deployment := serveFixture(t, dir)
-	tunnel := &gateTunnel{done: make(chan error, 1)}
 	stubServeTunnel(t, tunnel)
 	store, err := state.Load(state.Dir(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	output := &safeBuffer{}
-	result := make(chan error, 1)
-	go func() {
-		result <- serveTunnel(ctx, output, state.Dir(dir), &store, deployment, serveClient(t, "running", false))
-	}()
-	waitOutput(t, output, "Tunnel ready")
-	cancel()
-	select {
-	case err := <-result:
-		if err != nil {
-			t.Fatalf("cancellation must map to nil, got %v", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("serve did not stop after cancel")
+	harness := &holdHarness{
+		dir: dir, deployment: deployment, store: store,
+		output: &safeBuffer{}, result: make(chan error, 1),
+		cancel: cancel, tunnel: tunnel,
 	}
-	persisted, ok := mustLoad(t, dir, deployment.ID)
+	go func() {
+		harness.result <- serveTunnel(ctx, harness.output, state.Dir(dir), &harness.store, deployment, serveClient(t, "running", false))
+	}()
+	waitOutput(t, harness.output, "Tunnel ready")
+	return harness
+}
+
+func (harness *holdHarness) await(t *testing.T, action string) error {
+	t.Helper()
+	select {
+	case err := <-harness.result:
+		return err
+	case <-time.After(10 * time.Second):
+		t.Fatalf("serve did not stop after %s", action)
+		return nil
+	}
+}
+
+func (harness *holdHarness) assertServing(t *testing.T) {
+	t.Helper()
+	persisted, ok := mustLoad(t, harness.dir, harness.deployment.ID)
 	if !ok || persisted.State != state.Serving {
 		t.Fatalf("state = %+v, want serving", persisted)
 	}
 }
 
+func TestServeTunnelHoldsRouteUntilCancel(t *testing.T) {
+	harness := holdServe(t, &manualTunnel{done: make(chan error, 1)})
+	harness.cancel()
+	if err := harness.await(t, "cancel"); err != nil {
+		t.Fatalf("cancellation must map to nil, got %v", err)
+	}
+	harness.assertServing(t)
+}
+
 func TestServeTunnelCrashesToServingOnTunnelExit(t *testing.T) {
-	liveEndpoint(t)
-	dir := t.TempDir()
-	deployment := serveFixture(t, dir)
-	tunnel := &gateTunnel{done: make(chan error, 1)}
-	stubServeTunnel(t, tunnel)
-	store, err := state.Load(state.Dir(dir))
-	if err != nil {
-		t.Fatal(err)
+	harness := holdServe(t, &manualTunnel{done: make(chan error, 1)})
+	harness.tunnel.done <- errors.New("ssh exited")
+	err := harness.await(t, "tunnel exit")
+	if err == nil || !strings.Contains(err.Error(), "ssh exited") {
+		t.Fatalf("expected tunnel error, got %v", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	output := &safeBuffer{}
-	result := make(chan error, 1)
-	go func() {
-		result <- serveTunnel(ctx, output, state.Dir(dir), &store, deployment, serveClient(t, "running", false))
-	}()
-	waitOutput(t, output, "Tunnel ready")
-	tunnel.done <- errors.New("ssh exited")
-	select {
-	case err := <-result:
-		if err == nil || !strings.Contains(err.Error(), "ssh exited") {
-			t.Fatalf("expected tunnel error, got %v", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("serve did not stop after tunnel exit")
-	}
-	persisted, ok := mustLoad(t, dir, deployment.ID)
-	if !ok || persisted.State != state.Serving {
-		t.Fatalf("state = %+v, want serving", persisted)
-	}
+	harness.assertServing(t)
 }
