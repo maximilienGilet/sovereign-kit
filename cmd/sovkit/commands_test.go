@@ -465,8 +465,19 @@ func TestStatusJSONListsAllWhenNoneActive(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &list); err != nil {
 		t.Fatalf("invalid JSON array: %v\n%s", err, output.String())
 	}
+	if len(list) != 1 {
+		t.Fatalf("entries = %d, want 1 without --all", len(list))
+	}
+	output.Reset()
+	if err := runWith([]string{"status", "--json", "--all"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	list = nil
+	if err := json.Unmarshal(output.Bytes(), &list); err != nil {
+		t.Fatalf("invalid JSON array: %v\n%s", err, output.String())
+	}
 	if len(list) != 2 {
-		t.Fatalf("entries = %d, want 2", len(list))
+		t.Fatalf("entries = %d, want 2 with --all", len(list))
 	}
 }
 
@@ -479,6 +490,60 @@ func TestStatusShowsStoppedByID(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"parked-1", "stopped"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("missing %q:\n%s", want, output.String())
+		}
+	}
+}
+
+func TestStatusHidesDestroyedAlongsideActive(t *testing.T) {
+	dir := t.TempDir()
+	writeStatusFixture(t, dir)
+	addParkedFixture(t, dir, "gone-1", 30001, state.Destroyed)
+	var output bytes.Buffer
+	if err := runWith([]string{"status"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "gone-1") {
+		t.Fatalf("destroyed must stay hidden:\n%s", output.String())
+	}
+	output.Reset()
+	if err := runWith([]string{"status", "--all"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if text := output.String(); !strings.Contains(text, "gone-1") || !strings.Contains(text, "destroyed") {
+		t.Fatalf("missing destroyed with --all:\n%s", text)
+	}
+}
+
+func TestStatusReportsNoLiveDeployments(t *testing.T) {
+	dir := t.TempDir()
+	addParkedFixture(t, dir, "gone-1", 30001, state.Destroyed)
+	var output bytes.Buffer
+	if err := runWith([]string{"status"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if text := output.String(); !strings.Contains(text, "No live deployments") || strings.Contains(text, "gone-1") {
+		t.Fatalf("unexpected listing:\n%s", text)
+	}
+	output.Reset()
+	if err := runWith([]string{"status", "--json"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(output.String()) != "[]" {
+		t.Fatalf("expected empty array, got %q", output.String())
+	}
+}
+
+func TestStatusShowsDestroyedByID(t *testing.T) {
+	dir := t.TempDir()
+	writeStatusFixture(t, dir)
+	addParkedFixture(t, dir, "gone-1", 30001, state.Destroyed)
+	var output bytes.Buffer
+	if err := runWith([]string{"status", "gone-1"}, strings.NewReader(""), &output, filepath.Join(state.Dir(dir), "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"gone-1", "destroyed"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("missing %q:\n%s", want, output.String())
 		}

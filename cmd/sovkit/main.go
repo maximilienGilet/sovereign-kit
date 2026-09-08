@@ -382,12 +382,13 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 	set := flag.NewFlagSet("status", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	asJSON := set.Bool("json", false, "machine-readable output")
+	showAll := set.Bool("all", false, "include destroyed deployments")
 	positionals, err := parseFlagsAroundPositional(set, args)
 	if err != nil {
-		return usageErrorf("usage: sovkit status [id] [--json]")
+		return usageErrorf("usage: sovkit status [id] [--json] [--all]")
 	}
 	if len(positionals) > 1 {
-		return usageErrorf("usage: sovkit status [id] [--json]")
+		return usageErrorf("usage: sovkit status [id] [--json] [--all]")
 	}
 	dir := filepath.Dir(configPath)
 	store, err := state.Load(dir)
@@ -406,7 +407,15 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 		if len(store.Deployments) == 0 {
 			return noActiveError(dir, store)
 		}
-		return printDeploymentList(output, store.Deployments, *asJSON)
+		live := liveDeployments(store, *showAll)
+		if len(live) == 0 {
+			if *asJSON {
+				return writeJSON(output, []state.Deployment{})
+			}
+			_, err := fmt.Fprintln(output, "No live deployments.")
+			return err
+		}
+		return printDeploymentList(output, live, *asJSON)
 	}
 	if err := printDeployment(output, active, *asJSON); err != nil {
 		return err
@@ -415,7 +424,7 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 		return nil
 	}
 	var others []state.Deployment
-	for _, deployment := range store.Deployments {
+	for _, deployment := range liveDeployments(store, *showAll) {
 		if deployment.ID != active.ID {
 			others = append(others, deployment)
 		}
@@ -427,6 +436,18 @@ func runStatus(args []string, input io.Reader, output io.Writer, configPath stri
 		return err
 	}
 	return printDeploymentList(output, others, false)
+}
+
+// liveDeployments returns the records worth showing: everything but
+// destroyed, unless all asks for the full history.
+func liveDeployments(store state.Store, all bool) []state.Deployment {
+	live := []state.Deployment{}
+	for _, deployment := range store.Deployments {
+		if deployment.State != state.Destroyed || all {
+			live = append(live, deployment)
+		}
+	}
+	return live
 }
 
 func printDeployment(output io.Writer, deployment state.Deployment, asJSON bool) error {
